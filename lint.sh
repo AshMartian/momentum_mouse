@@ -1,0 +1,1 @@
+splint +posixlib -I./include src/inertia_scroller.c
