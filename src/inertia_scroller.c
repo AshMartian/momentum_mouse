@@ -8,12 +8,8 @@ int use_multitouch = 1;
 int main(int argc, char *argv[]) {
     // Initialize input capture (use override if provided)
     const char *device_override = (argc > 1) ? argv[1] : NULL;
-    if (initialize_input_capture(device_override) < 0) {
-        fprintf(stderr, "Failed to initialize input capture.\n");
-        return 1;
-    }
     
-    // Initialize the virtual device based on the mode.
+    // Initialize the virtual device based on the mode first
     if (use_multitouch) {
         if (setup_virtual_multitouch_device() < 0) {
             fprintf(stderr, "Failed to set up virtual multitouch device.\n");
@@ -24,6 +20,18 @@ int main(int argc, char *argv[]) {
             fprintf(stderr, "Failed to set up virtual device.\n");
             return 1;
         }
+    }
+    
+    // Then initialize input capture
+    if (initialize_input_capture(device_override) < 0) {
+        fprintf(stderr, "Failed to initialize input capture.\n");
+        // Clean up the virtual device
+        if (use_multitouch) {
+            destroy_virtual_multitouch_device();
+        } else {
+            destroy_virtual_device();
+        }
+        return 1;
     }
     
     printf("Inertia scroller running. Scroll your mouse wheel!\n");

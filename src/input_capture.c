@@ -82,13 +82,6 @@ int initialize_input_capture(const char *device_override) {
         return -1;
     }
 
-    // Grab the device exclusively.
-    if (ioctl(fd, EVIOCGRAB, 1) < 0) {
-        perror("Failed to grab device");
-        // You might choose to handle the error or exit here.
-        return -1;
-    }
-
     int rc = libevdev_new_from_fd(fd, &evdev);
     if (rc < 0) {
         fprintf(stderr, "Failed to initialize libevdev: %s\n", strerror(-rc));
@@ -107,6 +100,14 @@ int capture_input_event(void) {
         if (ev.type == EV_REL && ev.code == REL_WHEEL) {
             printf("Captured scroll event: %d\n", ev.value);
             update_inertia(ev.value);
+            
+            // We'll let the inertia logic handle emitting events
+            // Don't pass through directly here
+        }
+        else if (ev.type != EV_SYN) {
+            // For non-scroll events, we could also pass them through
+            // This would require a more general event emitter function
+            // For now, we're just handling scroll events
         }
         return 1;
     }

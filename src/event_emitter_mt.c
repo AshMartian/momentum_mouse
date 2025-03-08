@@ -96,8 +96,15 @@ int emit_two_finger_scroll_event(int delta) {
     struct input_event ev;
     
     // Update positions based on delta
-    finger0_y += delta;
-    finger1_y += delta;
+    // Multiply delta by a factor to make scrolling more noticeable
+    finger0_y += delta * 5;
+    finger1_y += delta * 5;
+    
+    // Keep fingers within screen bounds
+    if (finger0_y < 0) finger0_y = 0;
+    if (finger0_y > 1080) finger0_y = 1080;
+    if (finger1_y < 0) finger1_y = 0;
+    if (finger1_y > 1080) finger1_y = 1080;
     
     // --- Finger 0 ---
     memset(&ev, 0, sizeof(ev));

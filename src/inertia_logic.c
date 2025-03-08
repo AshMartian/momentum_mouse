@@ -73,3 +73,35 @@ void process_inertia(void) {
     // Sleep a little to approximate a 60 FPS update (the dt measurement handles timing accuracy).
     usleep(16000);
 }
+
+// This function is similar to process_inertia() but emits multitouch events instead
+void process_inertia_mt(void) {
+    if (!inertia_active) {
+        return;
+    }
+    
+    struct timeval now;
+    gettimeofday(&now, NULL);
+    double dt = time_diff_in_seconds(&last_time, &now);
+    last_time = now;
+    
+    // If the velocity is negligible, stop the inertia.
+    if (fabs(current_velocity) < 0.5) {
+        stop_inertia();
+        return;
+    }
+    
+    // Emit a synthetic multitouch scroll event with the current velocity (rounded to the nearest integer).
+    int event_val = (int)round(current_velocity);
+    if (emit_two_finger_scroll_event(event_val) < 0) {
+        fprintf(stderr, "Failed to emit multitouch scroll event in inertia processing.\n");
+    }
+    
+    // Apply an exponential decay to simulate friction.
+    // Adjust the friction coefficient (here set to 2.0) to tune deceleration.
+    const double friction = 2.0;
+    current_velocity *= exp(-friction * dt);
+    
+    // Sleep a little to approximate a 60 FPS update (the dt measurement handles timing accuracy).
+    usleep(16000);
+}

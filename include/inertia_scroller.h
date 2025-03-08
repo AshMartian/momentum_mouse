@@ -14,6 +14,7 @@ void destroy_virtual_multitouch_device(void);
 // Inertia logic functions
 void update_inertia(int delta);
 void process_inertia(void);
+void process_inertia_mt(void);
 void start_inertia(int initial_velocity);
 void stop_inertia(void);
 
