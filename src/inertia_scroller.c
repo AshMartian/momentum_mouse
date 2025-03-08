@@ -1,13 +1,48 @@
 #include <stdio.h>
 #include <unistd.h>
+#include <string.h>
 #include "inertia_scroller.h"
 
-// Set this flag based on command-line argument or configuration.
+// Global configuration variables
 int use_multitouch = 1;
+int grab_device = 0;  // Default to not grabbing
+ScrollDirection scroll_direction = SCROLL_DIRECTION_TRADITIONAL;  // Default
+int auto_detect_direction = 1;  // Try to auto-detect by default
 
 int main(int argc, char *argv[]) {
-    // Initialize input capture (use override if provided)
-    const char *device_override = (argc > 1) ? argv[1] : NULL;
+    // Parse command line arguments
+    const char *device_override = NULL;
+    
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--grab") == 0) {
+            grab_device = 1;
+        } else if (strcmp(argv[i], "--no-multitouch") == 0) {
+            use_multitouch = 0;
+        } else if (strcmp(argv[i], "--natural") == 0) {
+            scroll_direction = SCROLL_DIRECTION_NATURAL;
+            auto_detect_direction = 0;  // Override auto-detection
+        } else if (strcmp(argv[i], "--traditional") == 0) {
+            scroll_direction = SCROLL_DIRECTION_TRADITIONAL;
+            auto_detect_direction = 0;  // Override auto-detection
+        } else if (strcmp(argv[i], "--no-auto-detect") == 0) {
+            auto_detect_direction = 0;  // Don't auto-detect
+        } else if (argv[i][0] != '-') {
+            // Assume this is the device path
+            device_override = argv[i];
+        }
+    }
+    
+    // Try to auto-detect scroll direction if enabled
+    if (auto_detect_direction) {
+        if (!detect_scroll_direction()) {
+            printf("Could not auto-detect scroll direction, using traditional\n");
+        }
+    }
+    
+    printf("Configuration: multitouch=%s, grab=%s, scroll_direction=%s\n", 
+           use_multitouch ? "enabled" : "disabled",
+           grab_device ? "enabled" : "disabled",
+           scroll_direction == SCROLL_DIRECTION_NATURAL ? "natural" : "traditional");
     
     // Initialize the virtual device based on the mode first
     if (use_multitouch) {
@@ -39,21 +74,16 @@ int main(int argc, char *argv[]) {
     while (1) {
         capture_input_event();
         // Process inertia:
-        // Here, process_inertia() would call either emit_scroll_event() or emit_two_finger_scroll_event()
         if (use_multitouch) {
-            // For example:
-            // process_inertia_mt(); // You could create a variant that uses multitouch
-            // For now, as a demo, we directly call the multitouch emitter:
-            // (In a real implementation, you’d want to integrate the inertia physics here.)
-            // Let's assume we have a current delta from inertia logic (replace 'current_delta' with actual value)
-            int current_delta = 5;  // This would be computed dynamically.
-            emit_two_finger_scroll_event(current_delta);
+            process_inertia_mt();
         } else {
             process_inertia();
         }
         usleep(5000);
     }
     
+    // Clean up resources
+    cleanup_input_capture();
     if (use_multitouch) {
         destroy_virtual_multitouch_device();
     } else {

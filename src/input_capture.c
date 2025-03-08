@@ -10,6 +10,7 @@
 
 static struct libevdev *evdev = NULL;
 static char *mouse_device_path = NULL;
+static int inertia_already_stopped = 0;
 
 // Helper to extract the event number from a device node string (e.g. "/dev/input/event5")
 static int extract_event_number(const char *devnode) {
@@ -79,16 +80,41 @@ int initialize_input_capture(const char *device_override) {
     if (fd < 0) {
         perror("Error opening mouse device");
         free(mouse_device_path);
+        mouse_device_path = NULL;
         return -1;
+    }
+
+    // Only grab the device if explicitly requested
+    if (grab_device) {
+        if (ioctl(fd, EVIOCGRAB, 1) < 0) {
+            perror("Failed to grab device");
+            // Continue anyway, don't return error
+        } else {
+            printf("Device grabbed exclusively\n");
+        }
     }
 
     int rc = libevdev_new_from_fd(fd, &evdev);
     if (rc < 0) {
         fprintf(stderr, "Failed to initialize libevdev: %s\n", strerror(-rc));
         free(mouse_device_path);
+        mouse_device_path = NULL;
+        close(fd);
         return -1;
     }
     return 0;
+}
+
+// Clean up resources used by input capture
+void cleanup_input_capture(void) {
+    if (evdev) {
+        libevdev_free(evdev);
+        evdev = NULL;
+    }
+    if (mouse_device_path) {
+        free(mouse_device_path);
+        mouse_device_path = NULL;
+    }
 }
 
 // Capture a single input event from the physical mouse.
@@ -99,17 +125,38 @@ int capture_input_event(void) {
     if (rc == 0) {
         if (ev.type == EV_REL && ev.code == REL_WHEEL) {
             printf("Captured scroll event: %d\n", ev.value);
+            inertia_already_stopped = 0;  // Reset flag when scrolling
             update_inertia(ev.value);
             
             // We'll let the inertia logic handle emitting events
             // Don't pass through directly here
+            return 1;
         }
-        else if (ev.type != EV_SYN) {
-            // For non-scroll events, we could also pass them through
-            // This would require a more general event emitter function
-            // For now, we're just handling scroll events
+        // Cancel inertia when mouse moves (REL_X or REL_Y events)
+        else if (ev.type == EV_REL && (ev.code == REL_X || ev.code == REL_Y)) {
+            // Only stop inertia once per mouse movement sequence
+            if (!inertia_already_stopped) {
+                stop_inertia();
+                inertia_already_stopped = 1;
+            }
+            
+            // Pass through the mouse movement event
+            // Don't report errors for mouse movement events to reduce console spam
+            emit_passthrough_event(&ev);
+            return 1;
         }
-        return 1;
+        else if (ev.type == EV_REL || ev.type == EV_KEY || ev.type == EV_SYN) {
+            // Only pass through relevant events and check return value
+            if (emit_passthrough_event(&ev) < 0) {
+                // Don't print error for every event, it floods the console
+                // Only print for non-SYN events
+                if (ev.type != EV_SYN) {
+                    fprintf(stderr, "Warning: Failed to pass through event type %d, code %d\n", 
+                            ev.type, ev.code);
+                }
+            }
+            return 1;
+        }
     }
     return 0;
 }

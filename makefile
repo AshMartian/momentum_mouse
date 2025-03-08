@@ -2,7 +2,7 @@ CC = gcc
 CFLAGS = -Wall -Wextra -O2
 LDFLAGS = -levdev -ludev -lm
 
-SRCS = src/inertia_scroller.c src/input_capture.c src/event_emitter.c src/event_emitter_mt.c src/inertia_logic.c
+SRCS = src/inertia_scroller.c src/input_capture.c src/event_emitter.c src/event_emitter_mt.c src/inertia_logic.c src/system_settings.c
 OBJS = $(SRCS:.c=.o)
 TARGET = inertia_scroller
 

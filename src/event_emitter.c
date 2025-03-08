@@ -70,6 +70,31 @@ int emit_scroll_event(int value) {
     return 0;
 }
 
+// Pass through all non-scroll events from the original mouse
+int emit_passthrough_event(struct input_event *ev) {
+    // Skip passing through REL_WHEEL events - we handle those with inertia
+    if (ev->type == EV_REL && ev->code == REL_WHEEL) {
+        return 0;
+    }
+    
+    // Check if the file descriptor is valid
+    if (uinput_fd < 0) {
+        return -1;
+    }
+    
+    // Pass through all other events
+    if (write(uinput_fd, ev, sizeof(struct input_event)) < 0) {
+        // Only log errors for non-SYN events to reduce noise
+        // And don't log mouse movement errors to reduce spam
+        if (ev->type != EV_SYN && !(ev->type == EV_REL && (ev->code == REL_X || ev->code == REL_Y))) {
+            perror("Error writing passthrough event");
+        }
+        return -1;
+    }
+    
+    return 0;
+}
+
 void destroy_virtual_device(void) {
     if (ioctl(uinput_fd, UI_DEV_DESTROY) < 0) {
         perror("Error destroying uinput device");
