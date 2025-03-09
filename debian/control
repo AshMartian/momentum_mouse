@@ -7,7 +7,7 @@ Standards-Version: 4.5.0
 
 Package: inertia-scroller
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}, libudev1, libevdev2, libx11-6
+Depends: ${shlibs:Depends}, ${misc:Depends}, libudev1, libevdev2, libx11-6, libgtk-3-0
 Description: Smooth inertial scrolling for Linux
   Adds macOS-like inertial scrolling behavior to Linux systems.
   Provides smooth scrolling with momentum and natural deceleration

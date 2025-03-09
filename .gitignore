@@ -2,3 +2,11 @@
 .env
 .aider*
 inertia_scroller-prev
+inertia_scroller
+inertia_scroller_gui
+*.log
+*.sub*
+.debhelper
+debian/inertia-scroller
+debian/inertia_scroller_gui
+debian/files

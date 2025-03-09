@@ -2,5 +2,17 @@
 %:
 	dh $@
 
+override_dh_auto_build:
+	$(MAKE)
+	# Build GUI
+	cd gui && $(MAKE)
+
 override_dh_auto_install:
 	$(MAKE) DESTDIR=$$(pwd)/debian/inertia-scroller prefix=/usr install
+	# Install GUI binary
+	install -D -m 755 gui/inertia_scroller_gui $$(pwd)/debian/inertia-scroller/usr/bin/inertia_scroller_gui
+	# Install desktop file
+	install -D -m 644 debian/inertia_scroller_gui.desktop $$(pwd)/debian/inertia-scroller/usr/share/applications/inertia_scroller_gui.desktop
+	# Install icons
+	install -D -m 644 debian/icons/inertia_scroller.png $$(pwd)/debian/inertia-scroller/usr/share/icons/hicolor/128x128/apps/inertia_scroller.png
+	install -D -m 644 debian/icons/inertia_scroller.png $$(pwd)/debian/inertia-scroller/usr/share/pixmaps/inertia_scroller.png

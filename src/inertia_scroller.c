@@ -4,6 +4,8 @@
 #include <string.h>
 #include <limits.h>
 #include <syslog.h>
+#include <pwd.h>
+#include <stdarg.h>
 #include "inertia_scroller.h"
 #include <linux/limits.h>
 
@@ -19,23 +21,32 @@ double scroll_sensitivity = 1.0;  // Default sensitivity
 double scroll_multiplier = 1.0;   // Default multiplier
 double scroll_friction = 2.0;     // Default friction
 double max_velocity_factor = 0.8; // Default max velocity (80% of screen dimension)
+const char *config_file_override = NULL;  // Config file override path
 
-int main(int argc, char *argv[]) {
-    // Parse command line arguments
-    const char *device_override = NULL;
+// Implementation of debug_log function
+void debug_log(const char *format, ...) {
+    if (!debug_mode) return;
     
-    // Try to load configuration from system-wide config file first
-    load_config_file("/etc/inertia_scroller.conf");
+    va_list args;
+    va_start(args, format);
     
-    // Then try user config file which will override system settings
-    char user_config_path[PATH_MAX];
-    const char *home_dir = getenv("HOME");
-    if (home_dir) {
-        snprintf(user_config_path, sizeof(user_config_path), "%s/.config/inertia_scroller.conf", home_dir);
-        load_config_file(user_config_path);
+    if (daemon_mode) {
+        // Format the message first
+        char buffer[1024];
+        vsnprintf(buffer, sizeof(buffer), format, args);
+        // Log to syslog
+        syslog(LOG_INFO, "%s", buffer);
+    } else {
+        // Log to stdout
+        vprintf(format, args);
     }
     
-    // Command line arguments override config file settings
+    va_end(args);
+}
+
+int main(int argc, char *argv[]) {
+    // Parse command line arguments first to get any config override and debug settings
+    const char *device_override = NULL;
     
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
@@ -56,12 +67,53 @@ int main(int argc, char *argv[]) {
             printf("                              Lower values make scrolling last longer\n");
             printf("  --max-velocity=VALUE        Set maximum velocity as screen factor (default: 0.8)\n");
             printf("                              Higher values allow faster scrolling\n");
+            printf("  --config=PATH               Use the specified config file\n");
             printf("  --daemon                    Run as a background daemon\n");
             printf("\n");
             printf("If DEVICE_PATH is provided, use that input device instead of auto-detecting\n");
             return 0;
         } else if (strcmp(argv[i], "--debug") == 0) {
             debug_mode = 1;
+        } else if (strcmp(argv[i], "--daemon") == 0) {
+            daemon_mode = 1;
+        } else if (strncmp(argv[i], "--config=", 9) == 0) {
+            config_file_override = argv[i] + 9;
+        }
+        // Don't process other arguments yet
+    }
+    
+    // Daemonize if requested (do this early, before loading configs)
+    if (daemon_mode) {
+        // Daemonize the process
+        if (daemon(0, 0) < 0) {
+            fprintf(stderr, "Failed to daemonize process\n");
+            return 1;
+        }
+        
+        // Open syslog for logging
+        openlog("inertia_scroller", LOG_PID, LOG_DAEMON);
+        syslog(LOG_INFO, "Inertia Scroller daemon started");
+    }
+    
+    // Now load configs
+    if (config_file_override) {
+        debug_log("Loading config from override path: %s\n", config_file_override);
+        load_config_file(config_file_override);
+        // Skip other config loading
+    } else {
+        // Try to load configuration from system-wide config file first
+        debug_log("Loading system-wide config from /etc/inertia_scroller.conf\n");
+        load_config_file("/etc/inertia_scroller.conf");
+        debug_log("Using system-wide configuration\n");
+    }
+    
+    // Now process the rest of the command line arguments to override config settings
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0 ||
+            strcmp(argv[i], "--debug") == 0 || strcmp(argv[i], "--daemon") == 0 ||
+            strncmp(argv[i], "--config=", 9) == 0) {
+            // Skip options we've already processed
+            continue;
         } else if (strcmp(argv[i], "--grab") == 0) {
             grab_device = 1;
         } else if (strcmp(argv[i], "--no-multitouch") == 0) {
@@ -74,15 +126,9 @@ int main(int argc, char *argv[]) {
             auto_detect_direction = 0;  // Override auto-detection
         } else if (strcmp(argv[i], "--horizontal") == 0) {
             scroll_axis = SCROLL_AXIS_HORIZONTAL;
-            if (debug_mode) {
-                printf("Using horizontal scrolling\n");
-            }
+            debug_log("Using horizontal scrolling\n");
         } else if (strcmp(argv[i], "--no-auto-detect") == 0) {
             auto_detect_direction = 0;  // Don't auto-detect
-        } else if (strcmp(argv[i], "--daemon") == 0) {
-            daemon_mode = 1;
-            // When in daemon mode, we typically don't want debug output
-            debug_mode = 0;
         } else if (strncmp(argv[i], "--sensitivity=", 14) == 0) {
             // Parse sensitivity value
             double value = atof(argv[i] + 14);
@@ -132,35 +178,19 @@ int main(int argc, char *argv[]) {
     // Try to auto-detect scroll direction if enabled
     if (auto_detect_direction) {
         if (!detect_scroll_direction()) {
-            if (debug_mode) {
-                printf("Could not auto-detect scroll direction, using traditional\n");
-            }
+            debug_log("Could not auto-detect scroll direction, using traditional\n");
         }
     }
     
-    // Daemonize if requested
-    if (daemon_mode) {
-        // Daemonize the process
-        if (daemon(0, 0) < 0) {
-            fprintf(stderr, "Failed to daemonize process\n");
-            return 1;
-        }
-        
-        // Open syslog for logging
-        openlog("inertia_scroller", LOG_PID, LOG_DAEMON);
-        syslog(LOG_INFO, "Inertia Scroller daemon started");
-    }
     
-    if (debug_mode) {
-        printf("Configuration: multitouch=%s, grab=%s, scroll_direction=%s, scroll_axis=%s, debug=%s\n", 
-               use_multitouch ? "enabled" : "disabled",
-               grab_device ? "enabled" : "disabled",
-               scroll_direction == SCROLL_DIRECTION_NATURAL ? "natural" : "traditional",
-               scroll_axis == SCROLL_AXIS_HORIZONTAL ? "horizontal" : "vertical",
-               debug_mode ? "enabled" : "disabled");
-        printf("Sensitivity: %.2f, Multiplier: %.2f, Friction: %.2f\n", 
-               scroll_sensitivity, scroll_multiplier, scroll_friction);
-    }
+    debug_log("Configuration: multitouch=%s, grab=%s, scroll_direction=%s, scroll_axis=%s, debug=%s\n", 
+           use_multitouch ? "enabled" : "disabled",
+           grab_device ? "enabled" : "disabled",
+           scroll_direction == SCROLL_DIRECTION_NATURAL ? "natural" : "traditional",
+           scroll_axis == SCROLL_AXIS_HORIZONTAL ? "horizontal" : "vertical",
+           debug_mode ? "enabled" : "disabled");
+    debug_log("Sensitivity: %.2f, Multiplier: %.2f, Friction: %.2f\n", 
+           scroll_sensitivity, scroll_multiplier, scroll_friction);
     
     // Initialize the virtual device based on the mode first
     if (use_multitouch) {
@@ -187,9 +217,7 @@ int main(int argc, char *argv[]) {
         return 1;
     }
     
-    if (debug_mode) {
-        printf("Inertia scroller running. Scroll your mouse wheel!\n");
-    }
+    debug_log("Inertia scroller running. Scroll your mouse wheel!\n");
     
     while (1) {
         capture_input_event();

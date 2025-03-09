@@ -4,6 +4,8 @@
 
 Inertia Scroller brings smooth, natural scrolling to Linux desktop environments. It transforms the abrupt, jerky scrolling experience typical of mouse wheels into a fluid, momentum-based scrolling experience similar to what you'd find on modern trackpads and touchscreens.
 
+![Icon](debian/icons/inertia_scroller.png)
+
 ## The Problem
 
 Scrolling with a mouse on Linux can be a jarring experience. Each notch of the scroll wheel produces a fixed-distance jump that:
@@ -51,10 +53,10 @@ Instead of content jumping in fixed increments, it glides naturally with momentu
 
 ```bash
 # Download the latest .deb package
-wget https://github.com/AshMartian/inertia_scroller/releases/latest/download/inertia-scroller_0.1.2_amd64.deb
+wget https://github.com/AshMartian/inertia_scroller/releases/latest/download/inertia-scroller_0.3.0_amd64.deb
 
 # Install the package
-sudo dpkg -i inertia-scroller_0.1.2_amd64.deb
+sudo dpkg -i inertia-scroller_0.3.0_amd64.deb
 
 # Install dependencies if needed
 sudo apt-get install -f
@@ -76,6 +78,8 @@ cd inertia-scroller
 # Build the project
 make
 
+sudo ./inertia_scroller -h
+
 # Install (optional)
 sudo make install
 
@@ -88,7 +92,10 @@ sudo systemctl start inertia_scroller.service
 Inertia Scroller can be configured through:
 
 1. Command-line arguments
-2. Configuration files at `/etc/inertia_scroller.conf` (system-wide) or `~/.config/inertia_scroller.conf` (user-specific)
+2. Configuration files at `/etc/inertia_scroller.conf` (system-wide)
+3. Via the GUI! Installed as "Inertia Scroller Settings"
+
+~[Settings Window](docs/gui-v0.3.0.png)
 
 ### Configuration File Reference
 

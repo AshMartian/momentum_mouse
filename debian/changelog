@@ -1,12 +1,20 @@
+inertia-scroller (0.3.0) unstable; urgency=medium
+
+  * Simplified configuration system to use only system-wide config
+  * GUI now updates system config directly with admin privileges
+  * Removed complex user config detection logic
+
+ -- Ash Martian <dev@ashmartian.com>  Mon, 10 Mar 2024 12:00:00 +0000
+
 inertia-scroller (0.1.2) unstable; urgency=medium
 
   * Increased default friction to 2.0 for better scrolling control
   * Initial release
 
- -- Ash Martian <dev@ashmartian.com>  Sat, 8 Mar 2024 23:00
+ -- Ash Martian <dev@ashmartian.com>  Sat, 08 Mar 2024 23:00:00 +0000
 
 inertia-scroller (0.1.1) unstable; urgency=medium                                                                                   
                                                                                                                                      
-   * Initial release.                                                                                                                
+  * Initial release.                                                                                                                
                                                                                                                                      
-  -- Ash Martian <dev@ashmartian.com>  Sat, 8 Mar 2024 20:00
+ -- Ash Martian <dev@ashmartian.com>  Sat, 08 Mar 2024 20:00:00 +0000

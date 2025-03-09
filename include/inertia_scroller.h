@@ -74,4 +74,7 @@ int detect_scroll_direction(void);
 // Configuration file handling
 void load_config_file(const char *filename);
 
+// Debug logging
+void debug_log(const char *format, ...);
+
 #endif

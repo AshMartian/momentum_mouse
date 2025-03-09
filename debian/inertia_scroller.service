@@ -3,10 +3,12 @@ Description=Inertia Scroller Daemon
 After=graphical.target
 
 [Service]
-Type=forking
-ExecStart=/usr/bin/inertia_scroller --daemon
+Type=simple
+ExecStart=/usr/bin/inertia_scroller
 Restart=on-failure
 RestartSec=5
+StandardOutput=journal
+StandardError=journal
 
 [Install]
 WantedBy=multi-user.target

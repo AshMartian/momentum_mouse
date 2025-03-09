@@ -17,7 +17,20 @@ void load_config_file(const char *filename) {
         printf("Reading configuration from: %s\n", filename);
     }
 
+    // Add this to log the entire file content for debugging
+    if (debug_mode) {
+        printf("Config file contents:\n");
+        char buffer[256];
+        while (fgets(buffer, sizeof(buffer), fp) != NULL) {
+            printf("  %s", buffer);
+        }
+        printf("End of config file\n");
+        rewind(fp);
+    }
+
     char line[256];
+    int in_smooth_scroll_section = 0;  // Flag to track if we're in the [smooth_scroll] section
+    
     while (fgets(line, sizeof(line), fp)) {
         // Skip comments and empty lines
         if (line[0] == '#' || line[0] == '\n' || line[0] == '\r') {
@@ -28,6 +41,23 @@ void load_config_file(const char *filename) {
         size_t len = strlen(line);
         if (len > 0 && (line[len-1] == '\n' || line[len-1] == '\r')) {
             line[len-1] = '\0';
+        }
+        
+        // Check for section header
+        if (line[0] == '[') {
+            // If this is the [smooth_scroll] section, set the flag
+            if (strncmp(line, "[smooth_scroll]", 15) == 0) {
+                in_smooth_scroll_section = 1;
+            } else {
+                // Any other section, clear the flag
+                in_smooth_scroll_section = 0;
+            }
+            continue;  // Skip processing this line further
+        }
+
+        // If we're not in the smooth_scroll section and we found a section header, skip this line
+        if (!in_smooth_scroll_section && strchr(line, '[') != NULL) {
+            continue;
         }
 
         char key[128] = {0};
