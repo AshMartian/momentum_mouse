@@ -17,7 +17,7 @@ extern double current_velocity;
 static int uinput_mt_fd = -1;
 static int touch_active = 0;  // Track if touch is currently active
 static struct timeval last_gesture_end_time = {0, 0};
-static const int MIN_GESTURE_INTERVAL_MS = 100; // Minimum time between gestures in milliseconds
+static const int MIN_GESTURE_INTERVAL_MS = 50; // Reduced minimum time between gestures
 BoundaryResetInfo boundary_reset_info = {{0, 0}, 0.0, 0.0, 0};
 int boundary_reset_in_progress = 0;
 struct timeval last_boundary_reset_time = {0, 0};
@@ -134,21 +134,30 @@ static double time_diff_in_seconds(struct timeval *start, struct timeval *end) {
     return seconds + microseconds;
 }
 
+// Helper function to write an event and check for errors
+static int write_event_mt(struct input_event *ev, const char *error_msg, int *ending_flag) {
+    if (write(uinput_mt_fd, ev, sizeof(*ev)) < 0) {
+        if (debug_mode) {
+            perror(error_msg);
+        }
+        if (ending_flag) {
+            *ending_flag = 0;
+        }
+        return -1;
+    }
+    return 0;
+}
+
 // Flag to track post-boundary transition frames
 int post_boundary_frames = 0;
 
 
-// This function updates finger positions by adding the delta
-// and sends out updated multitouch events.
-int emit_two_finger_scroll_event(int delta) {
-    struct input_event ev;
-    static int boundary_reset = 0;  // Flag to track if we just did a boundary reset
-    static int reset_count = 0;     // Count consecutive resets
-    static struct timeval last_reset_time = {0, 0};
-    
-    // Get current time for timing calculations
+// Helper function to handle boundary reset logic for both vertical and horizontal scrolling
+static int handle_boundary_reset(int new_pos, int delta, int screen_size, int is_vertical) {
     struct timeval now;
     gettimeofday(&now, NULL);
+    static int reset_count = 0;     // Count consecutive resets
+    static struct timeval last_reset_time = {0, 0};
     
     // Calculate time since last reset
     double time_since_reset = 0.0;
@@ -162,209 +171,127 @@ int emit_two_finger_scroll_event(int delta) {
         reset_count = 0;
     }
     
-    // Calculate new positions based on scroll axis
-    if (scroll_axis == SCROLL_AXIS_VERTICAL) {
-        // Vertical scrolling - update Y positions
-        int new_finger0_y = finger0_y + delta;
-        int new_finger1_y = finger1_y + delta;
+    // Calculate boundary buffer based on velocity
+    double abs_velocity = fabs(current_velocity);
+    int boundary_buffer = (int)(abs_velocity * 0.2);  // 20% of velocity as buffer
+    
+    // Check if we've hit a boundary
+    if ((new_pos >= (screen_size - boundary_buffer) && delta > 0) || 
+        (new_pos <= boundary_buffer && delta < 0) || 
+        new_pos < 0) {
         
-        // Log detailed position information before boundary check
+        reset_count++;
+        last_reset_time = now;
+        
         if (debug_mode) {
-            printf("PRE-CHECK: finger0_y=%d, delta=%d, new_finger0_y=%d, velocity=%.2f, position=%.2f\n",
-                   finger0_y, delta, new_finger0_y, current_velocity, current_position);
+            printf("BOUNDARY: Hit %s boundary at %d, delta=%d, resetting to %s (reset #%d in %.2fs, buffer=%d)\n", 
+                is_vertical ? "vertical" : "horizontal", new_pos, delta, 
+                (delta > 0) ? (is_vertical ? "top" : "left") : (is_vertical ? "bottom" : "right"), 
+                reset_count, time_since_reset, boundary_buffer);
+            printf("BOUNDARY: Current velocity before reset: %.2f\n", current_velocity);
+            printf("BOUNDARY: Current position before reset: %.2f\n", current_position);
+            printf("BOUNDARY: Ending touch gesture before reset\n");
         }
         
-        // Calculate boundary buffer based on velocity
-        double abs_velocity = fabs(current_velocity);
-        int boundary_buffer = (int)(abs_velocity * 0.2);  // 20% of velocity as buffer
+        // End the current touch gesture
+        end_multitouch_gesture();
         
-        // Better boundary handling - reset to opposite edge when hitting or about to hit screen edges
-        if ((new_finger0_y >= (screen_height - boundary_buffer) && delta > 0) || 
-            (new_finger0_y <= boundary_buffer && delta < 0) || 
-            new_finger0_y < 0) {
-            reset_count++;
-            last_reset_time = now;
-            
+        // Skip the delay measurement and compensation - it's adding overhead
+        // Just set a fixed boost factor
+        double delay_compensation = 1.2;  // 20% boost
+        double old_velocity = current_velocity;
+        current_velocity *= delay_compensation;
+        
+        if (debug_mode) {
+            printf("BOUNDARY: Applied fixed 20%% velocity boost at boundary: %.2f -> %.2f\n", 
+                   old_velocity, current_velocity);
+        }
+        
+        // Adjust velocity - reduce it but keep direction
+        double direction = (current_velocity > 0) ? 1.0 : -1.0;
+        double abs_velocity = fabs(current_velocity);
+        
+        current_velocity = direction * abs_velocity;
+        
+        // Set position to a small value in the right direction
+        current_position = (current_velocity > 0) ? 10.0 : -10.0;
+        
+        // Set boundary reset flags
+        boundary_reset_in_progress = 1;
+        gettimeofday(&last_boundary_reset_time, NULL);
+        
+        // Store reset info
+        boundary_reset_info.reset_time = now;
+        boundary_reset_info.reset_velocity = current_velocity;
+        boundary_reset_info.reset_position = current_position;
+        boundary_reset_info.reset_direction = (delta > 0) ? 1 : -1;
+        
+        // Skip post-boundary transition
+        post_boundary_frames = 0;
+        
+        // Check if velocity is still significant enough to continue scrolling
+        if (fabs(current_velocity) < 0.5) {
             if (debug_mode) {
-                // Print boundary hit information
-                printf("BOUNDARY: Hit vertical boundary at y=%d, delta=%d, resetting to %s (reset #%d in %.2fs, buffer=%d)\n", 
-                    new_finger0_y, delta, (delta > 0) ? "top" : "bottom", reset_count, time_since_reset, boundary_buffer);
-                printf("BOUNDARY: Current velocity before reset: %.2f\n", current_velocity);
-                printf("BOUNDARY: Current position before reset: %.2f\n", current_position);
-                
-                // First, properly end the current touch gesture
-                printf("BOUNDARY: Ending touch gesture before reset\n");
+                printf("BOUNDARY: Velocity too low after reset (%.2f), stopping inertia\n", current_velocity);
             }
-            end_multitouch_gesture();
-            
-            // Ensure a proper delay between ending and starting a new gesture
-            // This is critical for proper touch event handling
-            // usleep(400); // Try and get a low as possible
-            
-            // Store the time when we end the gesture for timing calculations
-            struct timeval gesture_end_time;
-            gettimeofday(&gesture_end_time, NULL);
-            
-            // Measure the actual time spent in the delay
-            struct timeval gesture_restart_time;
-            gettimeofday(&gesture_restart_time, NULL);
-            double gesture_gap_time = time_diff_in_seconds(&gesture_end_time, &gesture_restart_time);
-            
-            // Compensate for the delay by adjusting velocity
-            // The longer the delay, the more we need to boost velocity to maintain momentum
-            if (gesture_gap_time > 0.01) {  // If delay was significant (>10ms)
-                // Calculate a boost factor based on the delay and current velocity
-                double delay_compensation = 1.0 + (gesture_gap_time * 5.0);  // 5x multiplier for delay time
-                
-                // Cap the compensation to prevent extreme boosts
-                if (delay_compensation > 1.3) delay_compensation = 1.3;  // Max 30% boost
-                
-                // Apply the compensation
-                double old_velocity = current_velocity;
-                current_velocity *= delay_compensation;
-                
-                if (debug_mode) {
-                    printf("BOUNDARY: Compensating for %.1fms delay with %.1f%% velocity boost: %.2f -> %.2f\n", 
-                           gesture_gap_time * 1000.0, (delay_compensation - 1.0) * 100.0, 
-                           old_velocity, current_velocity);
-                }
-            }
-            
-            // Adjust velocity - reduce it but keep direction
-            double direction = (current_velocity > 0) ? 1.0 : -1.0;
-            double abs_velocity = fabs(current_velocity);
-            
-            current_velocity = direction * abs_velocity;
-            
-            // Set position to a small value in the right direction
-            // double old_position = current_position;
-            current_position = (current_velocity > 0) ? 10.0 : -10.0;
-            
-            // Set new finger positions based on direction
+            stop_inertia();
+        }
+        
+        return 1; // Boundary reset occurred
+    }
+    
+    return 0; // No boundary reset
+}
+
+// This function updates finger positions by adding the delta
+// and sends out updated multitouch events.
+int emit_two_finger_scroll_event(int delta) {
+    struct input_event ev;
+    static int boundary_reset = 0;  // Flag to track if we just did a boundary reset
+    
+    // Calculate new positions based on scroll axis
+    int new_finger0_pos, new_finger1_pos;
+    int screen_size;
+    int *finger0_pos, *finger1_pos;
+    
+    if (scroll_axis == SCROLL_AXIS_VERTICAL) {
+        // Vertical scrolling - update Y positions
+        finger0_pos = &finger0_y;
+        finger1_pos = &finger1_y;
+        screen_size = screen_height;
+    } else {
+        // Horizontal scrolling - update X positions
+        finger0_pos = &finger0_x;
+        finger1_pos = &finger1_x;
+        screen_size = screen_width;
+    }
+    
+    new_finger0_pos = *finger0_pos + delta;
+    new_finger1_pos = *finger1_pos + delta;
+    
+    // Log detailed position information before boundary check
+    if (debug_mode) {
+        printf("PRE-CHECK: finger0_%s=%d, delta=%d, new_finger0_%s=%d, velocity=%.2f, position=%.2f\n",
+               (scroll_axis == SCROLL_AXIS_VERTICAL) ? "y" : "x", 
+               *finger0_pos, delta, 
+               (scroll_axis == SCROLL_AXIS_VERTICAL) ? "y" : "x", 
+               new_finger0_pos, current_velocity, current_position);
+    }
+    
+    // Check for boundary conditions and handle reset if needed
+    if (handle_boundary_reset(new_finger0_pos, delta, screen_size, scroll_axis == SCROLL_AXIS_VERTICAL)) {
+        // If we hit a boundary, set finger positions based on direction
+        if (scroll_axis == SCROLL_AXIS_VERTICAL) {
             if (delta > 0) {  // Scrolling down, hit bottom edge
                 // Reset to top edge
                 finger0_y = 20;
                 finger1_y = 20;
-                if (debug_mode) {
-                    printf("BOUNDARY: Reset fingers to top: y=%d\n", finger0_y);
-                }
             } else {  // Scrolling up, hit top edge
                 // Reset to bottom edge
                 finger0_y = screen_height - 20;
                 finger1_y = screen_height - 20;
-                if (debug_mode) {
-                    printf("BOUNDARY: Reset fingers to bottom: y=%d\n", finger0_y);
-                }
             }
-            
-            // Set boundary reset flags
-            boundary_reset = 1;
-            boundary_reset_in_progress = 1;
-            gettimeofday(&last_boundary_reset_time, NULL);
-            
-            // Store reset info
-            boundary_reset_info.reset_time = now;
-            boundary_reset_info.reset_velocity = current_velocity;
-            boundary_reset_info.reset_position = current_position;
-            boundary_reset_info.reset_direction = (delta > 0) ? 1 : -1;
-            
-            // Set post-boundary frames - use a fixed value for simplicity
-            post_boundary_frames = 1;
-            
-            // Skip the normal position update since we just reset positions
-            delta = 0;
-            
-            // The touch_active flag was reset by end_multitouch_gesture()
-            // The next call to this function will start a new touch gesture
-            
-            // If we're resetting too frequently, reduce velocity more aggressively
-            // if (reset_count > 1 && time_since_reset < 0.3) {
-            //     current_velocity *= 0.5;  // 50% reduction for rapid resets
-            //     printf("BOUNDARY: Too many resets (%d in %.2fs), reducing velocity to %.2f\n", 
-            //            reset_count, time_since_reset, current_velocity);
-            // }
-            
-            // Check if velocity is still significant enough to continue scrolling
-            if (fabs(current_velocity) < 0.5) {
-                printf("BOUNDARY: Velocity too low after reset (%.2f), stopping inertia\n", current_velocity);
-                stop_inertia();
-            }
-            
-            // Return early - we'll start the new gesture on the next call
-            return 0;
-        }
-        
-        // Update positions if delta is non-zero
-        if (delta != 0 && !boundary_reset) {
-            // Check for unreasonably large jumps in finger positions
-            if (abs(new_finger0_y - finger0_y) > 100 && !boundary_reset_in_progress) {
-                if (debug_mode) {
-                    printf("WARNING: Preventing large jump in finger position: %d -> %d\n", 
-                       finger0_y, new_finger0_y);
-                }
-                // Limit the jump to a reasonable amount
-                if (new_finger0_y > finger0_y) {
-                    new_finger0_y = finger0_y + 100;
-                    new_finger1_y = finger1_y + 100;
-                } else {
-                    new_finger0_y = finger0_y - 100;
-                    new_finger1_y = finger1_y - 100;
-                }
-            }
-            
-            finger0_y = new_finger0_y;
-            finger1_y = new_finger1_y;
-        }
-        boundary_reset = 0;  // Reset the flag for next time
-        
-        // Keep fingers within screen bounds
-        if (finger0_y < 0) {
-            printf("WARNING: finger0_y < 0 (%d), clamping to 0\n", finger0_y);
-            finger0_y = 0;
-        }
-        if (finger0_y > screen_height) {
-            printf("WARNING: finger0_y > screen_height (%d > %d), clamping to %d\n", 
-                   finger0_y, screen_height, screen_height);
-            finger0_y = screen_height;
-        }
-        if (finger1_y < 0) {
-            printf("WARNING: finger1_y < 0 (%d), clamping to 0\n", finger1_y);
-            finger1_y = 0;
-        }
-        if (finger1_y > screen_height) {
-            printf("WARNING: finger1_y > screen_height (%d > %d), clamping to %d\n", 
-                   finger1_y, screen_height, screen_height);
-            finger1_y = screen_height;
-        }
-        
-        // Log final position after all adjustments
-        if (debug_mode) {
-            printf("POST-CHECK: finger0_y=%d, finger1_y=%d, velocity=%.2f, position=%.2f\n",
-                   finger0_y, finger1_y, current_velocity, current_position);
-        }
-    } else {
-        // Horizontal scrolling - update X positions
-        int new_finger0_x = finger0_x + delta;
-        int new_finger1_x = finger1_x + delta;
-        
-        // Log detailed position information before boundary check
-        if (debug_mode) {
-            printf("PRE-CHECK: finger0_x=%d, delta=%d, new_finger0_x=%d, velocity=%.2f, position=%.2f\n",
-                   finger0_x, delta, new_finger0_x, current_velocity, current_position);
-        }
-        
-        // Calculate boundary buffer based on velocity
-        double abs_velocity = fabs(current_velocity);
-        int boundary_buffer = (int)(abs_velocity * 0.2);  // 20% of velocity as buffer
-        
-        // Better boundary handling - reset to opposite edge when hitting or about to hit screen edges
-        if ((new_finger0_x >= (screen_width - boundary_buffer) && delta > 0) || 
-            (new_finger0_x <= boundary_buffer && delta < 0) || 
-            new_finger0_x < 0) {
-            reset_count++;
-            last_reset_time = now;
-            
-            // We've hit a boundary, reset to opposite edge based on direction
+        } else {
             if (delta > 0) {  // Scrolling right, hit right edge
                 finger0_x = 20;  // Fixed position near left edge
                 finger1_x = 120;  // Keep the 100px separation
@@ -372,130 +299,92 @@ int emit_two_finger_scroll_event(int delta) {
                 finger0_x = screen_width - 120;  // Fixed position near right edge
                 finger1_x = screen_width - 20;
             }
-            boundary_reset = 1;  // Set flag to prevent immediate position update
-            
+        }
+        boundary_reset = 1;
+        
+        // Return early - we'll start the new gesture on the next call
+        return 0;
+    }
+    
+    // Update positions if delta is non-zero
+    if (delta != 0 && !boundary_reset) {
+        // Check for unreasonably large jumps in finger positions
+        if (abs(new_finger0_pos - *finger0_pos) > 100 && !boundary_reset_in_progress) {
             if (debug_mode) {
-                printf("BOUNDARY: Hit horizontal boundary at x=%d, delta=%d, resetting to %s x=%d (reset #%d in %.2fs, buffer=%d)\n", 
-                    new_finger0_x, delta, (delta > 0) ? "left" : "right", finger0_x, reset_count, time_since_reset, boundary_buffer);
-                printf("BOUNDARY: Current velocity before reset: %.2f\n", current_velocity);
-                printf("BOUNDARY: Current position before reset: %.2f\n", current_position);
+                printf("WARNING: Preventing large jump in finger position: %d -> %d\n", 
+                   *finger0_pos, new_finger0_pos);
             }
-            
-            // Don't reduce velocity as much - just enough to prevent jumps
-            // but maintain the smooth scrolling feel
-            double direction = (current_velocity > 0) ? 1.0 : -1.0;
-            // Ensure velocity direction matches the scroll direction after reset
-            if ((delta > 0 && direction < 0) || (delta < 0 && direction > 0)) {
-                // If velocity direction doesn't match scroll direction, flip it
-                direction = -direction;
-                if (debug_mode) {
-                    printf("BOUNDARY: Direction mismatch detected, flipping velocity direction\n");
-                }
-            }
-            
-            // Scale velocity reduction based on how high the velocity is
-            double velocity_scale = 0.7;  // Always reduce velocity by 30% at boundaries
-            double abs_velocity = fabs(current_velocity);
-            
-            // Apply progressively more aggressive reduction as velocity increases
-            if (abs_velocity > 500) {
-                velocity_scale = 0.3;  // 70% reduction for extremely high velocities
-            } else if (abs_velocity > 300) {
-                velocity_scale = 0.4;  // 60% reduction for very high velocities
-            } else if (abs_velocity > 200) {
-                velocity_scale = 0.5;  // 50% reduction for high velocities
-            }
-            
-            current_velocity = direction * abs_velocity * velocity_scale;
-            // Don't reset position to 0, just adjust it to maintain momentum
-            // Reset position to a small fixed value to prevent jumps
-            double old_position = current_position;
-            // Instead of using a fixed position value, calculate a position that maintains
-            // the same relative position within the scrollable area
-            // This ensures continuity in the scrolling experience
-            double position_scale = 0.01;  // Very small scale factor
-            // Preserve the sign of the velocity for direction consistency
-            current_position = direction * fabs(current_velocity) * position_scale;
-            
-            // Ensure the position is at least a minimum value to prevent stalling
-            double min_position = 5.0;
-            if (fabs(current_position) < min_position) {
-                current_position = direction * min_position;
-            }
-            
-            // Ensure the position has the same sign as the velocity
-            if ((current_position > 0 && current_velocity < 0) ||
-                (current_position < 0 && current_velocity > 0)) {
-                current_position = -current_position;
-            }
-            
-
-            if (debug_mode) {
-                // Print position adjustment information
-                printf("BOUNDARY: Adjusted position from %.2f to %.2f\n", old_position, current_position);
-            }
-            
-            // Set flag for post-boundary transition
-            // Use more frames for higher velocities to ensure smoother transitions
-            // Reuse the abs_velocity variable from above
-            if (abs_velocity > 300) {
-                post_boundary_frames = 30;  // More frames for high velocities
-            } else if (abs_velocity > 150) {
-                post_boundary_frames = 25;  // Standard for medium velocities
+            // Limit the jump to a reasonable amount
+            if (new_finger0_pos > *finger0_pos) {
+                new_finger0_pos = *finger0_pos + 100;
+                new_finger1_pos = *finger1_pos + 100;
             } else {
-                post_boundary_frames = 20;  // Fewer frames for low velocities
+                new_finger0_pos = *finger0_pos - 100;
+                new_finger1_pos = *finger1_pos - 100;
             }
-            
-            // Store the reset information for the transition handler
-            boundary_reset_info.reset_time = now;
-            boundary_reset_info.reset_velocity = current_velocity;
-            boundary_reset_info.reset_position = current_position;
-            boundary_reset_info.reset_direction = (delta > 0) ? 1 : -1;
-            
-            // Add a small delay after boundary reset to ensure smooth transition
-            if (debug_mode) {
-                printf("BOUNDARY: Adding small delay after reset\n");
-            }
-            usleep(1000);  // 1ms delay
-            
-            // Skip the normal position update since we just reset positions
-            delta = 0;
         }
         
-        // Update positions if delta is non-zero
-        if (delta != 0 && !boundary_reset) {
-            finger0_x = new_finger0_x;
-            finger1_x = new_finger1_x;
-            // Keep finger1 at the right offset from finger0
+        *finger0_pos = new_finger0_pos;
+        *finger1_pos = new_finger1_pos;
+        
+        // For horizontal scrolling, ensure finger1 is at the right offset from finger0
+        if (scroll_axis == SCROLL_AXIS_HORIZONTAL) {
             finger1_x = finger0_x + 100;
         }
-        boundary_reset = 0;  // Reset the flag for next time
-        
-        // Keep fingers within screen bounds
+    }
+    boundary_reset = 0;  // Reset the flag for next time
+    
+    // Keep fingers within screen bounds
+    if (scroll_axis == SCROLL_AXIS_VERTICAL) {
+        // Clamp Y positions
+        if (finger0_y < 0) {
+            if (debug_mode) printf("WARNING: finger0_y < 0 (%d), clamping to 0\n", finger0_y);
+            finger0_y = 0;
+        }
+        if (finger0_y > screen_height) {
+            if (debug_mode) printf("WARNING: finger0_y > screen_height (%d > %d), clamping to %d\n", 
+                   finger0_y, screen_height, screen_height);
+            finger0_y = screen_height;
+        }
+        if (finger1_y < 0) {
+            if (debug_mode) printf("WARNING: finger1_y < 0 (%d), clamping to 0\n", finger1_y);
+            finger1_y = 0;
+        }
+        if (finger1_y > screen_height) {
+            if (debug_mode) printf("WARNING: finger1_y > screen_height (%d > %d), clamping to %d\n", 
+                   finger1_y, screen_height, screen_height);
+            finger1_y = screen_height;
+        }
+    } else {
+        // Clamp X positions
         if (finger0_x < 0) {
-            printf("WARNING: finger0_x < 0 (%d), clamping to 0\n", finger0_x);
+            if (debug_mode) printf("WARNING: finger0_x < 0 (%d), clamping to 0\n", finger0_x);
             finger0_x = 0;
         }
         if (finger0_x > screen_width) {
-            printf("WARNING: finger0_x > screen_width (%d > %d), clamping to %d\n", 
+            if (debug_mode) printf("WARNING: finger0_x > screen_width (%d > %d), clamping to %d\n", 
                    finger0_x, screen_width, screen_width);
             finger0_x = screen_width;
         }
         if (finger1_x < 0) {
-            printf("WARNING: finger1_x < 0 (%d), clamping to 0\n", finger1_x);
+            if (debug_mode) printf("WARNING: finger1_x < 0 (%d), clamping to 0\n", finger1_x);
             finger1_x = 0;
         }
         if (finger1_x > screen_width) {
-            printf("WARNING: finger1_x > screen_width (%d > %d), clamping to %d\n", 
+            if (debug_mode) printf("WARNING: finger1_x > screen_width (%d > %d), clamping to %d\n", 
                    finger1_x, screen_width, screen_width);
             finger1_x = screen_width;
         }
-        
-        // Log final position after all adjustments
-        if (debug_mode) {
-            printf("POST-CHECK: finger0_x=%d, finger1_x=%d, velocity=%.2f, position=%.2f\n",
-                   finger0_x, finger1_x, current_velocity, current_position);
-        }
+    }
+    
+    // Log final position after all adjustments
+    if (debug_mode) {
+        printf("POST-CHECK: finger0_%s=%d, finger1_%s=%d, velocity=%.2f, position=%.2f\n",
+               (scroll_axis == SCROLL_AXIS_VERTICAL) ? "y" : "x", 
+               *finger0_pos, 
+               (scroll_axis == SCROLL_AXIS_VERTICAL) ? "y" : "x", 
+               *finger1_pos, 
+               current_velocity, current_position);
     }
     
     if (debug_mode) {
@@ -507,6 +396,7 @@ int emit_two_finger_scroll_event(int delta) {
                    delta, finger0_x, finger1_x);
         }
     }
+    
     
     // If touch isn't active yet, check if we need to enforce a delay
     if (!touch_active) {
@@ -536,82 +426,81 @@ int emit_two_finger_scroll_event(int delta) {
         ev.type = EV_ABS;
         ev.code = ABS_MT_SLOT;
         ev.value = 0;
-        if (write(uinput_mt_fd, &ev, sizeof(ev)) < 0) { perror("Error: slot 0"); return -1; }
+        if (write_event_mt(&ev, "Error: slot 0", NULL) < 0) return -1;
         
         // Set tracking ID for first finger
         memset(&ev, 0, sizeof(ev));
         ev.type = EV_ABS;
         ev.code = ABS_MT_TRACKING_ID;
         ev.value = 100;
-        if (write(uinput_mt_fd, &ev, sizeof(ev)) < 0) { perror("Error: tracking ID for finger 0"); return -1; }
+        if (write_event_mt(&ev, "Error: tracking ID for finger 0", NULL) < 0) return -1;
         
         // Set initial X position for first finger
         memset(&ev, 0, sizeof(ev));
         ev.type = EV_ABS;
         ev.code = ABS_MT_POSITION_X;
         ev.value = finger0_x;
-        if (write(uinput_mt_fd, &ev, sizeof(ev)) < 0) { perror("Error: position X for finger 0"); return -1; }
+        if (write_event_mt(&ev, "Error: position X for finger 0", NULL) < 0) return -1;
         
         // Set initial Y position for first finger
         memset(&ev, 0, sizeof(ev));
         ev.type = EV_ABS;
         ev.code = ABS_MT_POSITION_Y;
         ev.value = finger0_y;
-        if (write(uinput_mt_fd, &ev, sizeof(ev)) < 0) { perror("Error: position Y for finger 0"); return -1; }
+        if (write_event_mt(&ev, "Error: position Y for finger 0", NULL) < 0) return -1;
         
         // Now select slot 1
         memset(&ev, 0, sizeof(ev));
         ev.type = EV_ABS;
         ev.code = ABS_MT_SLOT;
         ev.value = 1;
-        if (write(uinput_mt_fd, &ev, sizeof(ev)) < 0) { perror("Error: slot 1"); return -1; }
+        if (write_event_mt(&ev, "Error: slot 1", NULL) < 0) return -1;
         
         // Set tracking ID for second finger
         memset(&ev, 0, sizeof(ev));
         ev.type = EV_ABS;
         ev.code = ABS_MT_TRACKING_ID;
         ev.value = 200;
-        if (write(uinput_mt_fd, &ev, sizeof(ev)) < 0) { perror("Error: tracking ID for finger 1"); return -1; }
+        if (write_event_mt(&ev, "Error: tracking ID for finger 1", NULL) < 0) return -1;
         
         // Set initial X position for second finger
         memset(&ev, 0, sizeof(ev));
         ev.type = EV_ABS;
         ev.code = ABS_MT_POSITION_X;
         ev.value = finger1_x;
-        if (write(uinput_mt_fd, &ev, sizeof(ev)) < 0) { perror("Error: position X for finger 1"); return -1; }
+        if (write_event_mt(&ev, "Error: position X for finger 1", NULL) < 0) return -1;
         
         // Set initial Y position for second finger
         memset(&ev, 0, sizeof(ev));
         ev.type = EV_ABS;
         ev.code = ABS_MT_POSITION_Y;
         ev.value = finger1_y;
-        if (write(uinput_mt_fd, &ev, sizeof(ev)) < 0) { perror("Error: position Y for finger 1"); return -1; }
+        if (write_event_mt(&ev, "Error: position Y for finger 1", NULL) < 0) return -1;
         
         // Now set BTN_TOUCH to indicate contact
         memset(&ev, 0, sizeof(ev));
         ev.type = EV_KEY;
         ev.code = BTN_TOUCH;
         ev.value = 1;
-        if (write(uinput_mt_fd, &ev, sizeof(ev)) < 0) { perror("Error: BTN_TOUCH press"); return -1; }
+        if (write_event_mt(&ev, "Error: BTN_TOUCH press", NULL) < 0) return -1;
         
         // Set BTN_TOOL_DOUBLETAP to indicate two fingers
         memset(&ev, 0, sizeof(ev));
         ev.type = EV_KEY;
         ev.code = BTN_TOOL_DOUBLETAP;
         ev.value = 1;
-        if (write(uinput_mt_fd, &ev, sizeof(ev)) < 0) { perror("Error: BTN_TOOL_DOUBLETAP press"); return -1; }
+        if (write_event_mt(&ev, "Error: BTN_TOOL_DOUBLETAP press", NULL) < 0) return -1;
         
         // Sync to apply the initial touch
         memset(&ev, 0, sizeof(ev));
         ev.type = EV_SYN;
         ev.code = SYN_REPORT;
         ev.value = 0;
-        if (write(uinput_mt_fd, &ev, sizeof(ev)) < 0) { perror("Error: SYN_REPORT"); return -1; }
+        if (write_event_mt(&ev, "Error: SYN_REPORT", NULL) < 0) return -1;
         
         touch_active = 1;
         
-        // Small delay to ensure the initial touch is registered
-        usleep(1000);
+        // No delay needed - removed for faster response
     }
     
     // Now update the positions for the movement
@@ -623,63 +512,67 @@ int emit_two_finger_scroll_event(int delta) {
         ev.type = EV_ABS;
         ev.code = ABS_MT_SLOT;
         ev.value = 0;
-        if (write(uinput_mt_fd, &ev, sizeof(ev)) < 0) { perror("Error: slot 0"); return -1; }
+        if (write_event_mt(&ev, "Error: slot 0", NULL) < 0) return -1;
         
         memset(&ev, 0, sizeof(ev));
         ev.type = EV_ABS;
         ev.code = ABS_MT_POSITION_Y;
         ev.value = finger0_y;
-        if (write(uinput_mt_fd, &ev, sizeof(ev)) < 0) { perror("Error: position Y for finger 0"); return -1; }
+        if (write_event_mt(&ev, "Error: position Y for finger 0", NULL) < 0) return -1;
         
         // Update finger 1 Y position
         memset(&ev, 0, sizeof(ev));
         ev.type = EV_ABS;
         ev.code = ABS_MT_SLOT;
         ev.value = 1;
-        if (write(uinput_mt_fd, &ev, sizeof(ev)) < 0) { perror("Error: slot 1"); return -1; }
+        if (write_event_mt(&ev, "Error: slot 1", NULL) < 0) return -1;
         
         memset(&ev, 0, sizeof(ev));
         ev.type = EV_ABS;
         ev.code = ABS_MT_POSITION_Y;
         ev.value = finger1_y;
-        if (write(uinput_mt_fd, &ev, sizeof(ev)) < 0) { perror("Error: position Y for finger 1"); return -1; }
+        if (write_event_mt(&ev, "Error: position Y for finger 1", NULL) < 0) return -1;
     } else {
         // Update finger 0 X position
         memset(&ev, 0, sizeof(ev));
         ev.type = EV_ABS;
         ev.code = ABS_MT_SLOT;
         ev.value = 0;
-        if (write(uinput_mt_fd, &ev, sizeof(ev)) < 0) { perror("Error: slot 0"); return -1; }
+        if (write_event_mt(&ev, "Error: slot 0", NULL) < 0) return -1;
         
         memset(&ev, 0, sizeof(ev));
         ev.type = EV_ABS;
         ev.code = ABS_MT_POSITION_X;
         ev.value = finger0_x;
-        if (write(uinput_mt_fd, &ev, sizeof(ev)) < 0) { perror("Error: position X for finger 0"); return -1; }
+        if (write_event_mt(&ev, "Error: position X for finger 0", NULL) < 0) return -1;
         
         // Update finger 1 X position
         memset(&ev, 0, sizeof(ev));
         ev.type = EV_ABS;
         ev.code = ABS_MT_SLOT;
         ev.value = 1;
-        if (write(uinput_mt_fd, &ev, sizeof(ev)) < 0) { perror("Error: slot 1"); return -1; }
+        if (write_event_mt(&ev, "Error: slot 1", NULL) < 0) return -1;
         
         memset(&ev, 0, sizeof(ev));
         ev.type = EV_ABS;
         ev.code = ABS_MT_POSITION_X;
         ev.value = finger1_x;
-        if (write(uinput_mt_fd, &ev, sizeof(ev)) < 0) { perror("Error: position X for finger 1"); return -1; }
+        if (write_event_mt(&ev, "Error: position X for finger 1", NULL) < 0) return -1;
     }
     
     // Final sync event
     // Add detailed logging for the first few events after a boundary reset
     static int post_reset_counter = 0;
     
-    if (boundary_reset_in_progress && post_reset_counter < 5) {
-        if (debug_mode) {
-            printf("POST-RESET-DEBUG[%d]: Sending event with finger0_y=%d, finger1_y=%d, delta=%d, velocity=%.2f\n",
-               post_reset_counter, finger0_y, finger1_y, delta, current_velocity);
-        }
+    if (boundary_reset_in_progress && post_reset_counter < 5 && debug_mode) {
+        printf("POST-RESET-DEBUG[%d]: Sending event with finger0_%s=%d, finger1_%s=%d, delta=%d, velocity=%.2f\n",
+           post_reset_counter, 
+           (scroll_axis == SCROLL_AXIS_VERTICAL) ? "y" : "x",
+           (scroll_axis == SCROLL_AXIS_VERTICAL) ? finger0_y : finger0_x,
+           (scroll_axis == SCROLL_AXIS_VERTICAL) ? "y" : "x",
+           (scroll_axis == SCROLL_AXIS_VERTICAL) ? finger1_y : finger1_x,
+           delta, current_velocity);
+        
         post_reset_counter++;
         if (post_reset_counter >= 5) {
             post_reset_counter = 0;
@@ -692,7 +585,7 @@ int emit_two_finger_scroll_event(int delta) {
     ev.type = EV_SYN;
     ev.code = SYN_REPORT;
     ev.value = 0;
-    if (write(uinput_mt_fd, &ev, sizeof(ev)) < 0) { perror("Error: SYN_REPORT"); return -1; }
+    if (write_event_mt(&ev, "Error: SYN_REPORT", NULL) < 0) return -1;
     
     return 0;
 }
@@ -722,51 +615,52 @@ void end_multitouch_gesture(void) {
     
     struct input_event ev;
     
+    
     // Release finger 0
     memset(&ev, 0, sizeof(ev));
     ev.type = EV_ABS;
     ev.code = ABS_MT_SLOT;
     ev.value = 0;
-    if (write(uinput_mt_fd, &ev, sizeof(ev)) < 0) { perror("Error: slot 0"); ending_in_progress = 0; return; }
+    if (write_event_mt(&ev, "Error: slot 0", &ending_in_progress) < 0) return;
     
     memset(&ev, 0, sizeof(ev));
     ev.type = EV_ABS;
     ev.code = ABS_MT_TRACKING_ID;
     ev.value = -1;  // -1 means finger up
-    if (write(uinput_mt_fd, &ev, sizeof(ev)) < 0) { perror("Error: tracking ID release for finger 0"); ending_in_progress = 0; return; }
+    if (write_event_mt(&ev, "Error: tracking ID release for finger 0", &ending_in_progress) < 0) return;
     
     // Release finger 1
     memset(&ev, 0, sizeof(ev));
     ev.type = EV_ABS;
     ev.code = ABS_MT_SLOT;
     ev.value = 1;
-    if (write(uinput_mt_fd, &ev, sizeof(ev)) < 0) { perror("Error: slot 1"); ending_in_progress = 0; return; }
+    if (write_event_mt(&ev, "Error: slot 1", &ending_in_progress) < 0) return;
     
     memset(&ev, 0, sizeof(ev));
     ev.type = EV_ABS;
     ev.code = ABS_MT_TRACKING_ID;
     ev.value = -1;  // -1 means finger up
-    if (write(uinput_mt_fd, &ev, sizeof(ev)) < 0) { perror("Error: tracking ID release for finger 1"); ending_in_progress = 0; return; }
+    if (write_event_mt(&ev, "Error: tracking ID release for finger 1", &ending_in_progress) < 0) return;
     
     // Release BTN_TOUCH and BTN_TOOL_DOUBLETAP
     memset(&ev, 0, sizeof(ev));
     ev.type = EV_KEY;
     ev.code = BTN_TOUCH;
     ev.value = 0;
-    if (write(uinput_mt_fd, &ev, sizeof(ev)) < 0) { perror("Error: BTN_TOUCH release"); ending_in_progress = 0; return; }
+    if (write_event_mt(&ev, "Error: BTN_TOUCH release", &ending_in_progress) < 0) return;
     
     memset(&ev, 0, sizeof(ev));
     ev.type = EV_KEY;
     ev.code = BTN_TOOL_DOUBLETAP;
     ev.value = 0;
-    if (write(uinput_mt_fd, &ev, sizeof(ev)) < 0) { perror("Error: BTN_TOOL_DOUBLETAP release"); ending_in_progress = 0; return; }
+    if (write_event_mt(&ev, "Error: BTN_TOOL_DOUBLETAP release", &ending_in_progress) < 0) return;
     
     // Final sync event
     memset(&ev, 0, sizeof(ev));
     ev.type = EV_SYN;
     ev.code = SYN_REPORT;
     ev.value = 0;
-    if (write(uinput_mt_fd, &ev, sizeof(ev)) < 0) { perror("Error: SYN_REPORT"); ending_in_progress = 0; return; }
+    if (write_event_mt(&ev, "Error: SYN_REPORT", &ending_in_progress) < 0) return;
     
     touch_active = 0;
     

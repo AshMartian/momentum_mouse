@@ -103,16 +103,31 @@ void update_inertia(int delta) {
                 printf("Consecutive scroll in same direction, velocity factor: %.2f\n", velocity_factor);
             }
         } else if ((current_velocity > 0 && delta < 0) || (current_velocity < 0 && delta > 0)) {
-            // Opposite direction - reduce existing velocity by a larger factor
-            // This makes it easier to cancel existing inertia
-            current_velocity *= 0.5;  // Reduce existing velocity by half
-            
+            // Opposite direction - completely reset the gesture like we do at boundaries
             if (debug_mode) {
-                printf("Direction change, reducing velocity by half\n");
+                printf("Direction change detected, ending touch gesture and resetting velocity\n");
             }
             
-            // Then add the new input, with normal responsiveness
-            velocity_factor = 10.0 * scroll_sensitivity;  // Use standard factor for direction changes
+            // End the current touch gesture
+            end_multitouch_gesture();
+            
+            // Reset velocity completely
+            current_velocity = 0.0;
+            
+            // Set position to a small value in the new direction
+            current_position = (delta > 0) ? 10.0 : -10.0;
+            
+            // Use standard factor for the new direction
+            velocity_factor = 15.0 * scroll_sensitivity;
+            
+            // We've completed a direction change reset
+            if (debug_mode) {
+                printf("Direction change reset complete\n");
+            }
+            
+            // Return early to skip the rest of the update
+            // The next call will start a new gesture in the opposite direction
+            return;
         }
     }
     
@@ -262,11 +277,11 @@ void process_inertia(void) {
 
 // This function is similar to process_inertia() but emits multitouch events instead
 void process_inertia_mt(void) {
-    static int was_active = 0;
     static int frame_count = 0;
+    static int was_active = 0;
     
     if (!inertia_active) {
-        // If we were previously active but now we're not, end the touch gesture
+        // End the touch gesture if we were previously active
         if (was_active) {
             end_multitouch_gesture();
             was_active = 0;
@@ -274,99 +289,85 @@ void process_inertia_mt(void) {
         }
         return;
     }
+    
+    // Set active flag for next time
     was_active = 1;
     frame_count++;
     
+    // Calculate time delta
     struct timeval now;
     gettimeofday(&now, NULL);
     double dt = time_diff_in_seconds(&last_time, &now);
     last_time = now;
     
-    // Apply friction to velocity - use the scroll_friction parameter
-    // Adjust friction based on sensitivity (inverse relationship)
-    const double friction = 0.8 * scroll_friction / sqrt(scroll_sensitivity);  // Reduced for longer scrolling
-    double old_velocity = current_velocity;
+    // Log inertia state periodically
+    if (debug_mode && frame_count % 20 == 0) {
+        printf("INERTIA: frame=%d, velocity=%.2f, position=%.2f, dt=%.3fs\n", 
+               frame_count, current_velocity, current_position, dt);
+    }
     
+    // Apply friction to velocity
+    const double friction = 0.8 * scroll_friction / sqrt(scroll_sensitivity);
+    double old_velocity = current_velocity;
     current_velocity *= exp(-friction * dt);
     
-    if (debug_mode && fabs(old_velocity - current_velocity) > 1.0) {
+    if (debug_mode && fabs(old_velocity - current_velocity) > 5.0) {
         printf("Time-based friction: dt=%.3fs, friction=%.2f, velocity: %.2f -> %.2f\n", 
                dt, friction, old_velocity, current_velocity);
     }
     
-    // Update position based on velocity
-    // Apply sensitivity to the position delta factor
-    double position_delta = current_velocity * dt * 80.0 * scroll_sensitivity;  // Increased for faster scrolling
+    // Calculate position delta based on velocity
+    double position_delta = current_velocity * dt * 80.0 * scroll_sensitivity;
     
-    // Ensure position_delta has the correct sign after a boundary reset
+    // Fix direction after boundary reset if needed
     if (boundary_reset_in_progress && post_boundary_frames > 15) {
-        // Get the expected direction from boundary_reset_info
-        extern BoundaryResetInfo boundary_reset_info;
         int expected_direction = boundary_reset_info.reset_direction;
         int actual_direction = (position_delta > 0) ? 1 : -1;
         
-        // If the directions don't match, force the correct direction
         if (expected_direction != actual_direction && position_delta != 0) {
-            printf("DIRECTION-FIX: Correcting position_delta from %.2f to %.2f\n",
-                   position_delta, -position_delta);
+            if (debug_mode) {
+                printf("DIRECTION-FIX: Correcting position_delta from %.2f to %.2f\n",
+                       position_delta, -position_delta);
+            }
             position_delta = -position_delta;
-            current_velocity = -current_velocity;  // Also fix velocity
+            current_velocity = -current_velocity;
         }
     }
     
-    // Handle post-boundary transition more smoothly
+    // Handle post-boundary transition - simplified for faster response
     if (post_boundary_frames > 0) {
-        // Use a more aggressive ramp-up to get to full speed faster
-        // This helps maintain the feeling of continuous scrolling
-        double progress = 1.0 - (post_boundary_frames / 10.0);  // 0.0 to 1.0
-        
-        // Use a quadratic curve that starts at 40% and quickly ramps up
-        double scale = 0.4 + (0.6 * progress * progress);
-        
-        // Apply scale to position delta
-        position_delta *= scale;
+        post_boundary_frames = 0;
+        boundary_reset_in_progress = 0;
         
         if (debug_mode) {
-            printf("POST-BOUNDARY: Frame %d/10, scale=%.2f, delta=%.2f\n", 
-                   10 - post_boundary_frames, scale, position_delta);
-        }
-        
-        post_boundary_frames--;
-        
-        // If this is the last post-boundary frame, clear the reset flag
-        if (post_boundary_frames == 0) {
-            boundary_reset_in_progress = 0;
+            printf("POST-BOUNDARY: Skipping transition frames for faster response\n");
         }
     }
     
-    // Cap the position delta to prevent extremely large jumps
-    // Make the cap more aggressive for higher velocities
+    // Cap position delta to prevent large jumps
+    double screen_size = (scroll_axis == SCROLL_AXIS_VERTICAL) ? screen_height : screen_width;
     double abs_velocity = fabs(current_velocity);
-    double max_delta_factor = 0.3;  // Default 30% of screen height
+    double max_delta_factor = 0.3;  // Default 30% of screen size
+    
     if (abs_velocity > 500) {
-        max_delta_factor = 0.15;  // 15% for very high velocities
+        max_delta_factor = 0.15;
     } else if (abs_velocity > 300) {
-        max_delta_factor = 0.2;  // 20% for high velocities
+        max_delta_factor = 0.2;
     }
-    double max_delta = screen_height * max_delta_factor;
+    
+    double max_delta = screen_size * max_delta_factor;
     if (fabs(position_delta) > max_delta) {
         double direction = (position_delta > 0) ? 1.0 : -1.0;
         position_delta = direction * max_delta;
         if (debug_mode) {
-            printf("POSITION: Capped delta to %.2f (was %.2f)\n", position_delta, current_velocity * dt * 80.0 * scroll_sensitivity);
+            printf("POSITION: Capped delta to %.2f\n", position_delta);
         }
     }
     
-    double old_position = current_position;
+    // Update position
     current_position += position_delta;
     
-    // Log significant position changes
-    if (debug_mode && fabs(position_delta) > 50) {
-        printf("POSITION: Large delta=%.2f, position: %.2f -> %.2f\n", 
-               position_delta, old_position, current_position);
-    }
-    
-    // If velocity is negligible, stop inertia
+    // Stop inertia if velocity is too low
     if (fabs(current_velocity) < 0.5) {
         if (debug_mode) {
             printf("Velocity too low (%.2f), stopping inertia\n", current_velocity);
@@ -375,22 +376,21 @@ void process_inertia_mt(void) {
         return;
     }
     
-    // Emit a synthetic multitouch scroll event with the position delta
+    // Emit scroll event
     int event_val = (int)round(position_delta);
-    
-    // Only emit if there's a change
     if (event_val != 0) {
-        if (debug_mode) {
-            printf("EMIT: Sending event with delta=%d (from position_delta=%.2f)\n", event_val, position_delta);
+        if (debug_mode && (abs(event_val) > 10 || frame_count % 20 == 0)) {
+            printf("EMIT: Sending event with delta=%d (from position_delta=%.2f)\n", 
+                   event_val, position_delta);
         }
+        
         if (emit_two_finger_scroll_event(event_val) < 0) {
             fprintf(stderr, "Failed to emit multitouch scroll event in inertia processing.\n");
-            // If we failed to emit, stop inertia to prevent further errors
             stop_inertia();
             return;
         }
     }
     
-    // Sleep a little to approximate a 60 FPS update (the dt measurement handles timing accuracy).
+    // Maintain ~60 FPS
     usleep(16000);
 }
