@@ -13,6 +13,7 @@ typedef enum {
 // Global configuration variables
 extern int grab_device;  // Whether to grab the device exclusively
 extern ScrollDirection scroll_direction;
+extern int debug_mode;  // Whether to output debug messages
 
 // Original event emitter functions
 int setup_virtual_device(void);
@@ -32,6 +33,8 @@ void process_inertia(void);
 void process_inertia_mt(void);
 void start_inertia(int initial_velocity);
 void stop_inertia(void);
+int is_inertia_active(void);
+void apply_mouse_friction(int movement_magnitude);
 
 // Input capture functions
 int initialize_input_capture(const char *device_override);

@@ -26,7 +26,9 @@ static int extract_event_number(const char *devnode) {
 int initialize_input_capture(const char *device_override) {
     if (device_override) {
         mouse_device_path = strdup(device_override);
-        printf("Using override mouse device: %s\n", mouse_device_path);
+        if (debug_mode) {
+            printf("Using override mouse device: %s\n", mouse_device_path);
+        }
     } else {
         struct udev *udev;
         struct udev_enumerate *enumerate;
@@ -73,7 +75,9 @@ int initialize_input_capture(const char *device_override) {
             return -1;
         }
         mouse_device_path = selected_path;
-        printf("Found mouse device: %s\n", mouse_device_path);
+        if (debug_mode) {
+            printf("Found mouse device: %s\n", mouse_device_path);
+        }
     }
     
     int fd = open(mouse_device_path, O_RDONLY | O_NONBLOCK);
@@ -89,7 +93,7 @@ int initialize_input_capture(const char *device_override) {
         if (ioctl(fd, EVIOCGRAB, 1) < 0) {
             perror("Failed to grab device");
             // Continue anyway, don't return error
-        } else {
+        } else if (debug_mode) {
             printf("Device grabbed exclusively\n");
         }
     }
@@ -124,7 +128,9 @@ int capture_input_event(void) {
     int rc = libevdev_next_event(evdev, LIBEVDEV_READ_FLAG_NORMAL, &ev);
     if (rc == 0) {
         if (ev.type == EV_REL && ev.code == REL_WHEEL) {
-            printf("Captured scroll event: %d\n", ev.value);
+            if (debug_mode) {
+                printf("Captured scroll event: %d\n", ev.value);
+            }
             inertia_already_stopped = 0;  // Reset flag when scrolling
             update_inertia(ev.value);
             
@@ -132,12 +138,43 @@ int capture_input_event(void) {
             // Don't pass through directly here
             return 1;
         }
-        // Cancel inertia when mouse moves (REL_X or REL_Y events)
-        else if (ev.type == EV_REL && (ev.code == REL_X || ev.code == REL_Y)) {
-            // Only stop inertia once per mouse movement sequence
-            if (!inertia_already_stopped) {
+        // Check for Escape key to reset scrolling (emergency stop)
+        else if (ev.type == EV_KEY && ev.code == KEY_ESC && ev.value == 1) {
+            if (is_inertia_active()) {
+                if (debug_mode) {
+                    printf("Escape key pressed, stopping inertia\n");
+                }
                 stop_inertia();
                 inertia_already_stopped = 1;
+            }
+            // Still pass through the key event
+            emit_passthrough_event(&ev);
+            return 1;
+        }
+        // Apply friction when mouse moves (REL_X or REL_Y events)
+        else if (ev.type == EV_REL && (ev.code == REL_X || ev.code == REL_Y)) {
+            // Instead of stopping inertia completely, apply friction based on movement
+            if (is_inertia_active()) {
+                // Calculate movement magnitude (simple approximation)
+                int movement = abs(ev.value);
+                
+                // Apply friction proportional to movement magnitude, but much gentler
+                apply_mouse_friction(movement);
+                
+                if (debug_mode && movement > 5) {
+                    printf("Mouse movement: %d, applying friction\n", movement);
+                }
+        
+                // Only stop inertia completely for very large movements
+                if (movement > 50) {  // Increased from 20 to 50
+                    if (!inertia_already_stopped) {
+                        if (debug_mode) {
+                            printf("Large mouse movement: %d, stopping inertia\n", movement);
+                        }
+                        stop_inertia();
+                        inertia_already_stopped = 1;
+                    }
+                }
             }
             
             // Pass through the mouse movement event
@@ -145,12 +182,24 @@ int capture_input_event(void) {
             emit_passthrough_event(&ev);
             return 1;
         }
+        // Check for mouse button clicks - they often indicate the user wants to stop scrolling
+        else if (ev.type == EV_KEY && (ev.code == BTN_LEFT || ev.code == BTN_RIGHT || ev.code == BTN_MIDDLE) && ev.value == 1) {
+            if (is_inertia_active()) {
+                if (debug_mode) {
+                    printf("Mouse button clicked, stopping inertia\n");
+                }
+                stop_inertia();
+                inertia_already_stopped = 1;
+            }
+            // Pass through the button event
+            emit_passthrough_event(&ev);
+            return 1;
+        }
         else if (ev.type == EV_REL || ev.type == EV_KEY || ev.type == EV_SYN) {
             // Only pass through relevant events and check return value
             if (emit_passthrough_event(&ev) < 0) {
-                // Don't print error for every event, it floods the console
-                // Only print for non-SYN events
-                if (ev.type != EV_SYN) {
+                // Only print for non-SYN events and only in debug mode
+                if (ev.type != EV_SYN && debug_mode) {
                     fprintf(stderr, "Warning: Failed to pass through event type %d, code %d\n", 
                             ev.type, ev.code);
                 }

@@ -25,7 +25,9 @@ int detect_scroll_direction(void) {
     if (uid == 0 && sudo_user != NULL) {
         // Running as root with sudo, use SUDO_USER
         strncpy(username, sudo_user, sizeof(username) - 1);
-        printf("Running as root, using SUDO_USER: %s\n", username);
+        if (debug_mode) {
+            printf("Running as root, using SUDO_USER: %s\n", username);
+        }
     } else {
         // Normal user
         strncpy(username, pw->pw_name, sizeof(username) - 1);
@@ -37,6 +39,10 @@ int detect_scroll_direction(void) {
         strncpy(display, display_env, sizeof(display) - 1);
     } else {
         strcpy(display, ":0");  // Default to :0 if not set
+    }
+    
+    if (debug_mode) {
+        printf("Detecting scroll direction for user %s on display %s\n", username, display);
     }
     
     // Construct command with proper user context
@@ -54,6 +60,9 @@ int detect_scroll_direction(void) {
     }
     
     // For GNOME/Ubuntu, check mouse setting first
+    if (debug_mode) {
+        printf("Trying GNOME mouse settings...\n");
+    }
     FILE *fp = popen(cmd, "r");
     if (fp != NULL) {
         char buffer[128];
@@ -80,6 +89,9 @@ int detect_scroll_direction(void) {
     }
     
     // If mouse setting didn't work, try touchpad setting
+    if (debug_mode) {
+        printf("Trying GNOME touchpad settings...\n");
+    }
     if (uid == 0) {
         snprintf(cmd, sizeof(cmd), 
                 "su %s -c 'DISPLAY=%s gsettings get org.gnome.desktop.peripherals.touchpad natural-scroll' 2>/dev/null", 
@@ -116,6 +128,9 @@ int detect_scroll_direction(void) {
     }
     
     // Try KDE Plasma setting
+    if (debug_mode) {
+        printf("Trying KDE settings...\n");
+    }
     if (uid == 0) {
         snprintf(cmd, sizeof(cmd), 
                 "su %s -c 'DISPLAY=%s kreadconfig5 --group \"Mouse\" --key \"NaturalScroll\"' 2>/dev/null", 

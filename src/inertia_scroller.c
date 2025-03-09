@@ -8,13 +8,30 @@ int use_multitouch = 1;
 int grab_device = 0;  // Default to not grabbing
 ScrollDirection scroll_direction = SCROLL_DIRECTION_TRADITIONAL;  // Default
 int auto_detect_direction = 1;  // Try to auto-detect by default
+int debug_mode = 0;  // Default to no debug output
 
 int main(int argc, char *argv[]) {
     // Parse command line arguments
     const char *device_override = NULL;
     
     for (int i = 1; i < argc; i++) {
-        if (strcmp(argv[i], "--grab") == 0) {
+        if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
+            printf("Inertia Scroller - Smooth scrolling for Linux\n\n");
+            printf("Usage: %s [OPTIONS] [DEVICE_PATH]\n\n", argv[0]);
+            printf("Options:\n");
+            printf("  --help, -h          Show this help message and exit\n");
+            printf("  --debug             Enable debug logging\n");
+            printf("  --grab              Grab the input device exclusively\n");
+            printf("  --no-multitouch     Use wheel events instead of multitouch\n");
+            printf("  --natural           Force natural scrolling direction\n");
+            printf("  --traditional       Force traditional scrolling direction\n");
+            printf("  --no-auto-detect    Don't auto-detect system scroll direction\n");
+            printf("\n");
+            printf("If DEVICE_PATH is provided, use that input device instead of auto-detecting\n");
+            return 0;
+        } else if (strcmp(argv[i], "--debug") == 0) {
+            debug_mode = 1;
+        } else if (strcmp(argv[i], "--grab") == 0) {
             grab_device = 1;
         } else if (strcmp(argv[i], "--no-multitouch") == 0) {
             use_multitouch = 0;
@@ -29,20 +46,29 @@ int main(int argc, char *argv[]) {
         } else if (argv[i][0] != '-') {
             // Assume this is the device path
             device_override = argv[i];
+        } else {
+            fprintf(stderr, "Unknown option: %s\n", argv[i]);
+            fprintf(stderr, "Use --help for usage information\n");
+            return 1;
         }
     }
     
     // Try to auto-detect scroll direction if enabled
     if (auto_detect_direction) {
         if (!detect_scroll_direction()) {
-            printf("Could not auto-detect scroll direction, using traditional\n");
+            if (debug_mode) {
+                printf("Could not auto-detect scroll direction, using traditional\n");
+            }
         }
     }
     
-    printf("Configuration: multitouch=%s, grab=%s, scroll_direction=%s\n", 
-           use_multitouch ? "enabled" : "disabled",
-           grab_device ? "enabled" : "disabled",
-           scroll_direction == SCROLL_DIRECTION_NATURAL ? "natural" : "traditional");
+    if (debug_mode) {
+        printf("Configuration: multitouch=%s, grab=%s, scroll_direction=%s, debug=%s\n", 
+               use_multitouch ? "enabled" : "disabled",
+               grab_device ? "enabled" : "disabled",
+               scroll_direction == SCROLL_DIRECTION_NATURAL ? "natural" : "traditional",
+               debug_mode ? "enabled" : "disabled");
+    }
     
     // Initialize the virtual device based on the mode first
     if (use_multitouch) {
@@ -69,7 +95,9 @@ int main(int argc, char *argv[]) {
         return 1;
     }
     
-    printf("Inertia scroller running. Scroll your mouse wheel!\n");
+    if (debug_mode) {
+        printf("Inertia scroller running. Scroll your mouse wheel!\n");
+    }
     
     while (1) {
         capture_input_event();

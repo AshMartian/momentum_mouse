@@ -29,31 +29,57 @@ void update_inertia(int delta) {
         delta = -delta;
     }
     
-    // If we're already scrolling and the new input is in the opposite direction,
-    // we need to fight against the existing inertia
+    // Get the current time for timing calculations
+    struct timeval now;
+    gettimeofday(&now, NULL);
+    
+    // Check if this is a new scroll sequence or continuing an existing one
+    double dt = 0.0;
+    if (last_time.tv_sec != 0) {
+        dt = time_diff_in_seconds(&last_time, &now);
+    }
+    last_time = now;
+    
+    
+    // Determine if this is a continuation of scrolling in the same direction
+    // Use a smaller initial velocity for single scroll events
+    double velocity_factor = 5.0;  // Reduced from 10.0 for smaller initial effect
+    
     if (inertia_active) {
-        if ((current_velocity > 0 && delta < 0) || (current_velocity < 0 && delta > 0)) {
+        // If scrolling in the same direction as current velocity and within a short time window
+        if (((current_velocity > 0 && delta > 0) || (current_velocity < 0 && delta < 0)) && dt < 0.3) {
+            // Enhance the effect for consecutive scrolls in the same direction
+            // The multiplier increases with each scroll in the same direction
+            velocity_factor = 8.0 + (fabs(current_velocity) / 5.0);  // Grows with existing velocity
+            
+            if (debug_mode) {
+                printf("Consecutive scroll in same direction, velocity factor: %.2f\n", velocity_factor);
+            }
+        } else if ((current_velocity > 0 && delta < 0) || (current_velocity < 0 && delta > 0)) {
             // Opposite direction - reduce existing velocity by a larger factor
             // This makes it easier to cancel existing inertia
             current_velocity *= 0.5;  // Reduce existing velocity by half
             
-            // Then add the new input, amplified to make it more responsive
-            current_velocity += (double)delta * 15.0;  // Amplify more than usual
-        } else {
-            // Same direction, just add to current velocity
-            current_velocity += (double)delta * 10.0;
+            if (debug_mode) {
+                printf("Direction change, reducing velocity by half\n");
+            }
+            
+            // Then add the new input, with normal responsiveness
+            velocity_factor = 10.0;  // Use standard factor for direction changes
         }
-    } else {
-        // Not active yet, just set the initial velocity
-        current_velocity = (double)delta * 10.0;
     }
     
-    // Update position
-    current_position += (double)delta * 20.0;
+    // Apply the velocity change
+    current_velocity += (double)delta * velocity_factor;
+    
+    // Update position - use a smaller factor for smoother initial movement
+    current_position += (double)delta * 15.0;  // Reduced from 20.0
+    
+    if (debug_mode) {
+        printf("Updated velocity: %.2f, position: %.2f\n", current_velocity, current_position);
+    }
     
     inertia_active = 1;
-    // Reset the timer on new input
-    gettimeofday(&last_time, NULL);
 }
 
 // Optionally, explicitly start inertia with an initial velocity.
@@ -70,6 +96,46 @@ void stop_inertia(void) {
     last_time.tv_sec = 0;
     last_time.tv_usec = 0;
     end_multitouch_gesture();  // End the touch gesture when inertia stops
+}
+
+// Check if inertia is currently active
+int is_inertia_active(void) {
+    return inertia_active;
+}
+
+// Apply friction based on mouse movement
+void apply_mouse_friction(int movement_magnitude) {
+    if (!inertia_active) {
+        return;
+    }
+    
+    // Calculate friction factor based on movement magnitude
+    // Make it much gentler - small movements = very small friction
+    double friction_factor = 0.03 + (movement_magnitude * 0.0001);
+    
+    // Cap the friction factor to a much lower value
+    if (friction_factor > 0.05) friction_factor = 0.05;  // Reduced from 0.95
+    
+    double old_velocity = current_velocity;
+    
+    // Apply the friction by reducing velocity
+    current_velocity *= (1.0 - friction_factor);
+    
+    if (debug_mode && movement_magnitude > 10) {
+        printf("Mouse friction: movement=%d, factor=%.3f, velocity: %.2f -> %.2f\n", 
+               movement_magnitude, friction_factor, old_velocity, current_velocity);
+    }
+    
+    // Only stop inertia if velocity becomes extremely small
+    if (fabs(current_velocity) < 0.05) {
+        if (debug_mode) {
+            printf("Velocity too low (%.2f), stopping inertia\n", current_velocity);
+        }
+        stop_inertia();
+    }
+    
+    // Update the last time to prevent time-based friction from being applied immediately
+    gettimeofday(&last_time, NULL);
 }
 
 // This function should be called periodically in the main loop.
@@ -119,6 +185,7 @@ void process_inertia_mt(void) {
     }
     was_active = 1;
     
+    
     struct timeval now;
     gettimeofday(&now, NULL);
     double dt = time_diff_in_seconds(&last_time, &now);
@@ -126,7 +193,14 @@ void process_inertia_mt(void) {
     
     // Apply friction to velocity - use a gentler friction for smoother scrolling
     const double friction = 1.2;  // Reduced from 1.5
+    double old_velocity = current_velocity;
+    
     current_velocity *= exp(-friction * dt);
+    
+    if (debug_mode && fabs(old_velocity - current_velocity) > 1.0) {
+        printf("Time-based friction: dt=%.3fs, velocity: %.2f -> %.2f\n", 
+               dt, old_velocity, current_velocity);
+    }
     
     // Update position based on velocity
     double position_delta = current_velocity * dt * 40.0;  // Reduced from 60.0 for smoother scrolling
@@ -134,6 +208,9 @@ void process_inertia_mt(void) {
     
     // If velocity is negligible, stop inertia
     if (fabs(current_velocity) < 0.5) {
+        if (debug_mode) {
+            printf("Velocity too low (%.2f), stopping inertia\n", current_velocity);
+        }
         stop_inertia();
         return;
     }
