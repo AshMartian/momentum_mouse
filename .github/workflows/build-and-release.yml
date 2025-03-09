@@ -1,0 +1,52 @@
+name: Build and Release Debian Package
+
+on:
+  push:
+    tags:
+      - 'v*'  # Run when a tag is pushed that starts with 'v'
+  workflow_dispatch:  # Allow manual triggering
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential libudev-dev libevdev-dev libx11-dev debhelper devscripts
+      
+      - name: Build Debian package
+        run: |
+          # Update version in debian/changelog if needed
+          VERSION=$(echo ${{ github.ref_name }} | sed 's/^v//')
+          if [[ "${{ github.ref_type }}" == "tag" && "$VERSION" != "" ]]; then
+            # If triggered by a tag, use the tag version
+            dch -v "$VERSION" "Release version $VERSION" --distribution unstable
+          fi
+          
+          # Build the package
+          dpkg-buildpackage -us -uc -b
+          
+          # Move the .deb file to a known location
+          mkdir -p artifacts
+          mv ../inertia-scroller_*.deb artifacts/
+      
+      - name: Upload Debian package as artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: debian-package
+          path: artifacts/*.deb
+      
+      - name: Create Release
+        if: startsWith(github.ref, 'refs/tags/')
+        id: create_release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: artifacts/*.deb
+          draft: false
+          prerelease: false
+          generate_release_notes: true
