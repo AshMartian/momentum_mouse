@@ -316,9 +316,12 @@ void process_inertia_mt(void) {
     
     // Handle post-boundary transition more smoothly
     if (post_boundary_frames > 0) {
-        // Use a very simple approach for post-boundary transitions
-        // Start with a small scale and increase linearly
-        double scale = 0.3 + (0.7 * (1.0 - (post_boundary_frames / 10.0)));
+        // Use a more aggressive ramp-up to get to full speed faster
+        // This helps maintain the feeling of continuous scrolling
+        double progress = 1.0 - (post_boundary_frames / 10.0);  // 0.0 to 1.0
+        
+        // Use a quadratic curve that starts at 40% and quickly ramps up
+        double scale = 0.4 + (0.6 * progress * progress);
         
         // Apply scale to position delta
         position_delta *= scale;
@@ -358,7 +361,7 @@ void process_inertia_mt(void) {
     current_position += position_delta;
     
     // Log significant position changes
-    if (fabs(position_delta) > 50) {
+    if (debug_mode && fabs(position_delta) > 50) {
         printf("POSITION: Large delta=%.2f, position: %.2f -> %.2f\n", 
                position_delta, old_position, current_position);
     }
