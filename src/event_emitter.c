@@ -24,6 +24,11 @@ int setup_virtual_device(void) {
         perror("Error setting REL_WHEEL");
         return -1;
     }
+    // Enable horizontal wheel for horizontal scrolling
+    if (ioctl(uinput_fd, UI_SET_RELBIT, REL_HWHEEL) < 0) {
+        perror("Error setting REL_HWHEEL");
+        return -1;
+    }
 
     // Prepare uinput device structure
     struct uinput_user_dev uidev;
@@ -49,10 +54,10 @@ int emit_scroll_event(int value) {
     struct input_event ev;
     memset(&ev, 0, sizeof(ev));
     
-    // Send the scroll event (REL_WHEEL)
+    // Send the scroll event (REL_WHEEL or REL_HWHEEL based on scroll_axis)
     ev.type = EV_REL;
-    ev.code = REL_WHEEL;
-    ev.value = value;  // value > 0 scrolls up, < 0 scrolls down
+    ev.code = (scroll_axis == SCROLL_AXIS_HORIZONTAL) ? REL_HWHEEL : REL_WHEEL;
+    ev.value = value;  // value > 0 scrolls up/right, < 0 scrolls down/left
     if (write(uinput_fd, &ev, sizeof(ev)) < 0) {
         perror("Error writing scroll event");
         return -1;
@@ -72,8 +77,11 @@ int emit_scroll_event(int value) {
 
 // Pass through all non-scroll events from the original mouse
 int emit_passthrough_event(struct input_event *ev) {
-    // Skip passing through REL_WHEEL events - we handle those with inertia
-    if (ev->type == EV_REL && ev->code == REL_WHEEL) {
+    // Skip passing through REL_WHEEL or REL_HWHEEL events based on scroll_axis
+    // We handle those with inertia
+    if (ev->type == EV_REL && 
+        ((scroll_axis == SCROLL_AXIS_VERTICAL && ev->code == REL_WHEEL) ||
+         (scroll_axis == SCROLL_AXIS_HORIZONTAL && ev->code == REL_HWHEEL))) {
         return 0;
     }
     

@@ -68,7 +68,9 @@ int setup_virtual_multitouch_device(void) {
     return 0;
 }
 // Global state for finger positions (initial positions)
+static int finger0_x = 960 - 50;  // left of center
 static int finger0_y = 540;
+static int finger1_x = 960 + 50;  // right of center
 static int finger1_y = 540;
 
 
@@ -77,34 +79,67 @@ static int finger1_y = 540;
 int emit_two_finger_scroll_event(int delta) {
     struct input_event ev;
     
-    // Calculate new positions
-    int new_finger0_y = finger0_y + delta;
-    int new_finger1_y = finger1_y + delta;
-    
-    // Simple boundary handling - just wrap around when hitting screen edges
-    if (new_finger0_y >= 1080 && delta > 0) {
-        // We've hit the bottom boundary, wrap to top
-        new_finger0_y = 0;
-        new_finger1_y = 0;
-    } else if (new_finger0_y <= 0 && delta < 0) {
-        // We've hit the top boundary, wrap to bottom
-        new_finger0_y = 1080;
-        new_finger1_y = 1080;
+    // Calculate new positions based on scroll axis
+    if (scroll_axis == SCROLL_AXIS_VERTICAL) {
+        // Vertical scrolling - update Y positions
+        int new_finger0_y = finger0_y + delta;
+        int new_finger1_y = finger1_y + delta;
+        
+        // Simple boundary handling - just wrap around when hitting screen edges
+        if (new_finger0_y >= 1080 && delta > 0) {
+            // We've hit the bottom boundary, wrap to top
+            new_finger0_y = 0;
+            new_finger1_y = 0;
+        } else if (new_finger0_y <= 0 && delta < 0) {
+            // We've hit the top boundary, wrap to bottom
+            new_finger0_y = 1080;
+            new_finger1_y = 1080;
+        }
+        
+        // Update positions
+        finger0_y = new_finger0_y;
+        finger1_y = new_finger1_y;
+        
+        // Keep fingers within screen bounds
+        if (finger0_y < 0) finger0_y = 0;
+        if (finger0_y > 1080) finger0_y = 1080;
+        if (finger1_y < 0) finger1_y = 0;
+        if (finger1_y > 1080) finger1_y = 1080;
+    } else {
+        // Horizontal scrolling - update X positions
+        int new_finger0_x = finger0_x + delta;
+        int new_finger1_x = finger1_x + delta;
+        
+        // Simple boundary handling - just wrap around when hitting screen edges
+        if (new_finger0_x >= 1920 && delta > 0) {
+            // We've hit the right boundary, wrap to left
+            new_finger0_x = 0;
+            new_finger1_x = 0;
+        } else if (new_finger0_x <= 0 && delta < 0) {
+            // We've hit the left boundary, wrap to right
+            new_finger0_x = 1920;
+            new_finger1_x = 1920;
+        }
+        
+        // Update positions
+        finger0_x = new_finger0_x;
+        finger1_x = new_finger1_x;
+        
+        // Keep fingers within screen bounds
+        if (finger0_x < 0) finger0_x = 0;
+        if (finger0_x > 1920) finger0_x = 1920;
+        if (finger1_x < 0) finger1_x = 0;
+        if (finger1_x > 1920) finger1_x = 1920;
     }
     
-    // Update positions
-    finger0_y = new_finger0_y;
-    finger1_y = new_finger1_y;
-    
-    // Keep fingers within screen bounds
-    if (finger0_y < 0) finger0_y = 0;
-    if (finger0_y > 1080) finger0_y = 1080;
-    if (finger1_y < 0) finger1_y = 0;
-    if (finger1_y > 1080) finger1_y = 1080;
-    
     if (debug_mode) {
-        printf("Emitting multitouch event with delta: %d (positions: %d, %d)\n", 
-               delta, finger0_y, finger1_y);
+        if (scroll_axis == SCROLL_AXIS_VERTICAL) {
+            printf("Emitting vertical multitouch event with delta: %d (Y positions: %d, %d)\n", 
+                   delta, finger0_y, finger1_y);
+        } else {
+            printf("Emitting horizontal multitouch event with delta: %d (X positions: %d, %d)\n", 
+                   delta, finger0_x, finger1_x);
+        }
     }
     
     // If touch isn't active yet, check if we need to enforce a delay
@@ -148,7 +183,7 @@ int emit_two_finger_scroll_event(int delta) {
         memset(&ev, 0, sizeof(ev));
         ev.type = EV_ABS;
         ev.code = ABS_MT_POSITION_X;
-        ev.value = 960 - 50;  // left of center
+        ev.value = finger0_x;
         if (write(uinput_mt_fd, &ev, sizeof(ev)) < 0) { perror("Error: position X for finger 0"); return -1; }
         
         // Set initial Y position for first finger
@@ -176,7 +211,7 @@ int emit_two_finger_scroll_event(int delta) {
         memset(&ev, 0, sizeof(ev));
         ev.type = EV_ABS;
         ev.code = ABS_MT_POSITION_X;
-        ev.value = 960 + 50;  // right of center
+        ev.value = finger1_x;
         if (write(uinput_mt_fd, &ev, sizeof(ev)) < 0) { perror("Error: position X for finger 1"); return -1; }
         
         // Set initial Y position for second finger
@@ -215,31 +250,60 @@ int emit_two_finger_scroll_event(int delta) {
     
     // Now update the positions for the movement
     
-    // Update finger 0 position
-    memset(&ev, 0, sizeof(ev));
-    ev.type = EV_ABS;
-    ev.code = ABS_MT_SLOT;
-    ev.value = 0;
-    if (write(uinput_mt_fd, &ev, sizeof(ev)) < 0) { perror("Error: slot 0"); return -1; }
-    
-    memset(&ev, 0, sizeof(ev));
-    ev.type = EV_ABS;
-    ev.code = ABS_MT_POSITION_Y;
-    ev.value = finger0_y;
-    if (write(uinput_mt_fd, &ev, sizeof(ev)) < 0) { perror("Error: position Y for finger 0"); return -1; }
-    
-    // Update finger 1 position
-    memset(&ev, 0, sizeof(ev));
-    ev.type = EV_ABS;
-    ev.code = ABS_MT_SLOT;
-    ev.value = 1;
-    if (write(uinput_mt_fd, &ev, sizeof(ev)) < 0) { perror("Error: slot 1"); return -1; }
-    
-    memset(&ev, 0, sizeof(ev));
-    ev.type = EV_ABS;
-    ev.code = ABS_MT_POSITION_Y;
-    ev.value = finger1_y;
-    if (write(uinput_mt_fd, &ev, sizeof(ev)) < 0) { perror("Error: position Y for finger 1"); return -1; }
+    // Update finger positions based on scroll axis
+    if (scroll_axis == SCROLL_AXIS_VERTICAL) {
+        // Update finger 0 Y position
+        memset(&ev, 0, sizeof(ev));
+        ev.type = EV_ABS;
+        ev.code = ABS_MT_SLOT;
+        ev.value = 0;
+        if (write(uinput_mt_fd, &ev, sizeof(ev)) < 0) { perror("Error: slot 0"); return -1; }
+        
+        memset(&ev, 0, sizeof(ev));
+        ev.type = EV_ABS;
+        ev.code = ABS_MT_POSITION_Y;
+        ev.value = finger0_y;
+        if (write(uinput_mt_fd, &ev, sizeof(ev)) < 0) { perror("Error: position Y for finger 0"); return -1; }
+        
+        // Update finger 1 Y position
+        memset(&ev, 0, sizeof(ev));
+        ev.type = EV_ABS;
+        ev.code = ABS_MT_SLOT;
+        ev.value = 1;
+        if (write(uinput_mt_fd, &ev, sizeof(ev)) < 0) { perror("Error: slot 1"); return -1; }
+        
+        memset(&ev, 0, sizeof(ev));
+        ev.type = EV_ABS;
+        ev.code = ABS_MT_POSITION_Y;
+        ev.value = finger1_y;
+        if (write(uinput_mt_fd, &ev, sizeof(ev)) < 0) { perror("Error: position Y for finger 1"); return -1; }
+    } else {
+        // Update finger 0 X position
+        memset(&ev, 0, sizeof(ev));
+        ev.type = EV_ABS;
+        ev.code = ABS_MT_SLOT;
+        ev.value = 0;
+        if (write(uinput_mt_fd, &ev, sizeof(ev)) < 0) { perror("Error: slot 0"); return -1; }
+        
+        memset(&ev, 0, sizeof(ev));
+        ev.type = EV_ABS;
+        ev.code = ABS_MT_POSITION_X;
+        ev.value = finger0_x;
+        if (write(uinput_mt_fd, &ev, sizeof(ev)) < 0) { perror("Error: position X for finger 0"); return -1; }
+        
+        // Update finger 1 X position
+        memset(&ev, 0, sizeof(ev));
+        ev.type = EV_ABS;
+        ev.code = ABS_MT_SLOT;
+        ev.value = 1;
+        if (write(uinput_mt_fd, &ev, sizeof(ev)) < 0) { perror("Error: slot 1"); return -1; }
+        
+        memset(&ev, 0, sizeof(ev));
+        ev.type = EV_ABS;
+        ev.code = ABS_MT_POSITION_X;
+        ev.value = finger1_x;
+        if (write(uinput_mt_fd, &ev, sizeof(ev)) < 0) { perror("Error: position X for finger 1"); return -1; }
+    }
     
     // Final sync event
     memset(&ev, 0, sizeof(ev));
@@ -325,7 +389,9 @@ void end_multitouch_gesture(void) {
     touch_active = 0;
     
     // Reset finger positions for next gesture
+    finger0_x = 960 - 50;  // left of center
     finger0_y = 540;
+    finger1_x = 960 + 50;  // right of center
     finger1_y = 540;
     
     ending_in_progress = 0;

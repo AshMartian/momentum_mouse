@@ -2,12 +2,15 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
+#include <limits.h>
 #include "inertia_scroller.h"
+#include <linux/limits.h>
 
 // Global configuration variables
 int use_multitouch = 1;
 int grab_device = 0;  // Default to not grabbing
 ScrollDirection scroll_direction = SCROLL_DIRECTION_TRADITIONAL;  // Default
+ScrollAxis scroll_axis = SCROLL_AXIS_VERTICAL;  // Default to vertical scrolling
 int auto_detect_direction = 1;  // Try to auto-detect by default
 int debug_mode = 0;  // Default to no debug output
 double scroll_sensitivity = 1.0;  // Default sensitivity
@@ -17,6 +20,19 @@ double scroll_friction = 1.0;     // Default friction
 int main(int argc, char *argv[]) {
     // Parse command line arguments
     const char *device_override = NULL;
+    
+    // Try to load configuration from system-wide config file first
+    load_config_file("/etc/inertia_scroller.conf");
+    
+    // Then try user config file which will override system settings
+    char user_config_path[PATH_MAX];
+    const char *home_dir = getenv("HOME");
+    if (home_dir) {
+        snprintf(user_config_path, sizeof(user_config_path), "%s/.config/inertia_scroller.conf", home_dir);
+        load_config_file(user_config_path);
+    }
+    
+    // Command line arguments override config file settings
     
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
@@ -29,6 +45,7 @@ int main(int argc, char *argv[]) {
             printf("  --no-multitouch             Use wheel events instead of multitouch\n");
             printf("  --natural                   Force natural scrolling direction\n");
             printf("  --traditional               Force traditional scrolling direction\n");
+            printf("  --horizontal                Use horizontal scrolling instead of vertical\n");
             printf("  --no-auto-detect            Don't auto-detect system scroll direction\n");
             printf("  --sensitivity=VALUE         Set scroll sensitivity (default: 1.0)\n");
             printf("  --multiplier=VALUE          Set repeating scroll multiplier (default: 1.0)\n");
@@ -49,6 +66,11 @@ int main(int argc, char *argv[]) {
         } else if (strcmp(argv[i], "--traditional") == 0) {
             scroll_direction = SCROLL_DIRECTION_TRADITIONAL;
             auto_detect_direction = 0;  // Override auto-detection
+        } else if (strcmp(argv[i], "--horizontal") == 0) {
+            scroll_axis = SCROLL_AXIS_HORIZONTAL;
+            if (debug_mode) {
+                printf("Using horizontal scrolling\n");
+            }
         } else if (strcmp(argv[i], "--no-auto-detect") == 0) {
             auto_detect_direction = 0;  // Don't auto-detect
         } else if (strncmp(argv[i], "--sensitivity=", 14) == 0) {
@@ -98,10 +120,11 @@ int main(int argc, char *argv[]) {
     }
     
     if (debug_mode) {
-        printf("Configuration: multitouch=%s, grab=%s, scroll_direction=%s, debug=%s\n", 
+        printf("Configuration: multitouch=%s, grab=%s, scroll_direction=%s, scroll_axis=%s, debug=%s\n", 
                use_multitouch ? "enabled" : "disabled",
                grab_device ? "enabled" : "disabled",
                scroll_direction == SCROLL_DIRECTION_NATURAL ? "natural" : "traditional",
+               scroll_axis == SCROLL_AXIS_HORIZONTAL ? "horizontal" : "vertical",
                debug_mode ? "enabled" : "disabled");
         printf("Sensitivity: %.2f, Multiplier: %.2f, Friction: %.2f\n", 
                scroll_sensitivity, scroll_multiplier, scroll_friction);

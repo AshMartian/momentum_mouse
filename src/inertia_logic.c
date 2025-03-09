@@ -157,7 +157,7 @@ void process_inertia(void) {
     last_time = now;
     
     // If the velocity is negligible, stop the inertia.
-    if (fabs(current_velocity) < 0.5) {
+    if (fabs(current_velocity) < 0.05) {
         stop_inertia();
         return;
     }

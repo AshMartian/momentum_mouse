@@ -127,9 +127,13 @@ int capture_input_event(void) {
     struct input_event ev;
     int rc = libevdev_next_event(evdev, LIBEVDEV_READ_FLAG_NORMAL, &ev);
     if (rc == 0) {
-        if (ev.type == EV_REL && ev.code == REL_WHEEL) {
+        if (ev.type == EV_REL && 
+            ((scroll_axis == SCROLL_AXIS_VERTICAL && ev.code == REL_WHEEL) ||
+             (scroll_axis == SCROLL_AXIS_HORIZONTAL && ev.code == REL_HWHEEL))) {
             if (debug_mode) {
-                printf("Captured scroll event: %d\n", ev.value);
+                printf("Captured %s scroll event: %d\n", 
+                       (scroll_axis == SCROLL_AXIS_HORIZONTAL) ? "horizontal" : "vertical", 
+                       ev.value);
             }
             inertia_already_stopped = 0;  // Reset flag when scrolling
             update_inertia(ev.value);
