@@ -3,7 +3,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <linux/uinput.h>
-#include "inertia_scroller.h"
+#include "momentum_mouse.h"
 
 // We'll store the uinput file descriptor here
 static int uinput_fd = -1;
@@ -33,7 +33,7 @@ int setup_virtual_device(void) {
     // Prepare uinput device structure
     struct uinput_user_dev uidev;
     memset(&uidev, 0, sizeof(uidev));
-    snprintf(uidev.name, UINPUT_MAX_NAME_SIZE, "My Inertia Scroller");
+    snprintf(uidev.name, UINPUT_MAX_NAME_SIZE, "My momentum mouse");
     uidev.id.bustype = BUS_USB;
     uidev.id.vendor  = 0x1234;
     uidev.id.product = 0x5678;

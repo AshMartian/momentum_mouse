@@ -3,7 +3,7 @@
 #include <string.h>
 #include <pwd.h>
 #include <unistd.h>
-#include "inertia_scroller.h"
+#include "momentum_mouse.h"
 
 // Detect the system's scroll direction setting
 // Returns 1 if successful, 0 if detection failed

@@ -6,7 +6,7 @@
 #include <syslog.h>
 #include <pwd.h>
 #include <stdarg.h>
-#include "inertia_scroller.h"
+#include "momentum_mouse.h"
 #include <linux/limits.h>
 
 // Global configuration variables
@@ -50,7 +50,7 @@ int main(int argc, char *argv[]) {
     
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
-            printf("Inertia Scroller - Smooth scrolling for Linux\n\n");
+            printf("momentum mouse - Smooth scrolling for Linux\n\n");
             printf("Usage: %s [OPTIONS] [DEVICE_PATH]\n\n", argv[0]);
             printf("Options:\n");
             printf("  --help, -h                  Show this help message and exit\n");
@@ -91,8 +91,8 @@ int main(int argc, char *argv[]) {
         }
         
         // Open syslog for logging
-        openlog("inertia_scroller", LOG_PID, LOG_DAEMON);
-        syslog(LOG_INFO, "Inertia Scroller daemon started");
+        openlog("momentum_mouse", LOG_PID, LOG_DAEMON);
+        syslog(LOG_INFO, "momentum mouse daemon started");
     }
     
     // Now load configs
@@ -102,8 +102,8 @@ int main(int argc, char *argv[]) {
         // Skip other config loading
     } else {
         // Try to load configuration from system-wide config file first
-        debug_log("Loading system-wide config from /etc/inertia_scroller.conf\n");
-        load_config_file("/etc/inertia_scroller.conf");
+        debug_log("Loading system-wide config from /etc/momentum_mouse.conf\n");
+        load_config_file("/etc/momentum_mouse.conf");
         debug_log("Using system-wide configuration\n");
     }
     
@@ -217,7 +217,7 @@ int main(int argc, char *argv[]) {
         return 1;
     }
     
-    debug_log("Inertia scroller running. Scroll your mouse wheel!\n");
+    debug_log("momentum mouse running. Scroll your mouse wheel!\n");
     
     while (1) {
         capture_input_event();
@@ -239,7 +239,7 @@ int main(int argc, char *argv[]) {
     }
     
     if (daemon_mode) {
-        syslog(LOG_INFO, "Inertia Scroller daemon stopped");
+        syslog(LOG_INFO, "momentum mouse daemon stopped");
         closelog();
     }
     

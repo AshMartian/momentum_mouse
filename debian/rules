@@ -10,9 +10,9 @@ override_dh_auto_build:
 override_dh_auto_install:
 	$(MAKE) DESTDIR=$$(pwd)/debian/inertia-scroller prefix=/usr install
 	# Install GUI binary
-	install -D -m 755 gui/inertia_scroller_gui $$(pwd)/debian/inertia-scroller/usr/bin/inertia_scroller_gui
+	install -D -m 755 gui/momentum_mouse_gui $$(pwd)/debian/inertia-scroller/usr/bin/momentum_mouse_gui
 	# Install desktop file
-	install -D -m 644 debian/inertia_scroller_gui.desktop $$(pwd)/debian/inertia-scroller/usr/share/applications/inertia_scroller_gui.desktop
+	install -D -m 644 debian/momentum_mouse_gui.desktop $$(pwd)/debian/inertia-scroller/usr/share/applications/momentum_mouse_gui.desktop
 	# Install icons
-	install -D -m 644 debian/icons/inertia_scroller.png $$(pwd)/debian/inertia-scroller/usr/share/icons/hicolor/128x128/apps/inertia_scroller.png
-	install -D -m 644 debian/icons/inertia_scroller.png $$(pwd)/debian/inertia-scroller/usr/share/pixmaps/inertia_scroller.png
+	install -D -m 644 debian/icons/momentum_mouse.png $$(pwd)/debian/inertia-scroller/usr/share/icons/hicolor/128x128/apps/momentum_mouse.png
+	install -D -m 644 debian/icons/momentum_mouse.png $$(pwd)/debian/inertia-scroller/usr/share/pixmaps/momentum_mouse.png

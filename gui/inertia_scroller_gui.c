@@ -1,4 +1,4 @@
-// gui/inertia_scroller_gui.c
+// gui/momentum_mouse_gui.c
 // Requires GTK development libraries: apt-get install libgtk-3-dev
 #include <gtk/gtk.h>
 #include <glib.h>
@@ -15,7 +15,7 @@
 #define DEFAULT_MAX_VELOCITY 0.8
 
 // System-wide config file path
-#define SYSTEM_CONFIG_FILE "/etc/inertia_scroller.conf"
+#define SYSTEM_CONFIG_FILE "/etc/momentum_mouse.conf"
 
 // Function declarations
 static GKeyFile* load_config(void);
@@ -76,7 +76,7 @@ static void save_config(GKeyFile *key_file) {
     }
     
     // Create a temporary file
-    gchar *temp_file = g_build_filename(g_get_tmp_dir(), "inertia_scroller.conf.tmp", NULL);
+    gchar *temp_file = g_build_filename(g_get_tmp_dir(), "momentum_mouse.conf.tmp", NULL);
     if (!g_file_set_contents(temp_file, data, -1, &error)) {
         g_printerr("Error creating temporary config file: %s\n", error->message);
         g_error_free(error);
@@ -86,7 +86,7 @@ static void save_config(GKeyFile *key_file) {
     }
     
     // Use pkexec to copy the file to /etc with root permissions AND restart the service in one command
-    gchar *command = g_strdup_printf("pkexec sh -c 'cp %s %s && systemctl restart inertia_scroller.service'", 
+    gchar *command = g_strdup_printf("pkexec sh -c 'cp %s %s && systemctl restart momentum_mouse.service'", 
                                      temp_file, SYSTEM_CONFIG_FILE);
     gint exit_status;
     if (!g_spawn_command_line_sync(command, NULL, NULL, &exit_status, &error)) {
@@ -123,7 +123,7 @@ int main(int argc, char *argv[]) {
 
     // Create main window.
     GtkWidget *window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
-    gtk_window_set_title(GTK_WINDOW(window), "Inertia Scroller Settings");
+    gtk_window_set_title(GTK_WINDOW(window), "momentum mouse Settings");
     gtk_window_set_default_size(GTK_WINDOW(window), 400, 300);
     g_signal_connect(window, "destroy", G_CALLBACK(gtk_main_quit), NULL);
 

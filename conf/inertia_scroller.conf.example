@@ -1,5 +1,5 @@
-# Inertia Scroller Configuration
-# This file should be placed at /etc/inertia_scroller.conf
+# momentum mouse Configuration
+# This file should be placed at /etc/momentum_mouse.conf
 
 # Enable or disable multitouch scrolling (true/false or 1/0)
 # multitouch=true

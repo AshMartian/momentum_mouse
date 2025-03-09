@@ -1,8 +1,8 @@
 [Desktop Entry]
- Name=Inertia Scroller Settings
+ Name=momentum mouse Settings
  Comment=Configure smooth scrolling settings
- Exec=/usr/bin/inertia_scroller_gui
- Icon=inertia_scroller
+ Exec=/usr/bin/momentum_mouse_gui
+ Icon=momentum_mouse
  Terminal=false
  Type=Application
  Categories=Settings;System;

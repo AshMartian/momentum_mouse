@@ -9,7 +9,7 @@ int setup_uinput_device(int fd) {
     memset(&uidev, 0, sizeof(uidev));
     
     // Set the name and version of the virtual device
-    snprintf(uidev.name, UINPUT_MAX_NAME_SIZE, "My Inertia Scroller");
+    snprintf(uidev.name, UINPUT_MAX_NAME_SIZE, "My momentum mouse");
     uidev.id.bustype = BUS_USB;
     uidev.id.vendor  = 0x1234;
     uidev.id.product = 0x5678;

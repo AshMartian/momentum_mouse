@@ -2,8 +2,8 @@
 CC = gcc
 CFLAGS = -Wall -Wextra -O2
 
-TARGET = inertia_scroller_gui 
-SRCS = inertia_scroller_gui.c 
+TARGET = momentum_mouse_gui 
+SRCS = momentum_mouse_gui.c 
 
 # Check if GTK3 is installed
 HAS_GTK := $(shell pkg-config --exists gtk+-3.0 && echo 1 || echo 0)

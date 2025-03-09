@@ -1,10 +1,10 @@
 [Unit]
-Description=Inertia Scroller Daemon
+Description=momentum mouse Daemon
 After=graphical.target
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/inertia_scroller
+ExecStart=/usr/bin/momentum_mouse
 Restart=on-failure
 RestartSec=5
 StandardOutput=journal

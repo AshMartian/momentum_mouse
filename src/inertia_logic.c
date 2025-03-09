@@ -3,7 +3,7 @@
 #include <unistd.h>
 #include <math.h>
 #include <sys/time.h>
-#include "inertia_scroller.h"
+#include "momentum_mouse.h"
 
 // Forward declaration for function used in this file
 extern void end_multitouch_gesture(void);

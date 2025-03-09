@@ -1,10 +1,10 @@
-# Inertia Scroller
+# momentum mouse
 
 ## Introduction
 
-Inertia Scroller brings smooth, natural scrolling to Linux desktop environments. It transforms the abrupt, jerky scrolling experience typical of mouse wheels into a fluid, momentum-based scrolling experience similar to what you'd find on modern trackpads and touchscreens.
+momentum mouse brings smooth, natural scrolling to Linux desktop environments. It transforms the abrupt, jerky scrolling experience typical of mouse wheels into a fluid, momentum-based scrolling experience similar to what you'd find on modern trackpads and touchscreens.
 
-![Icon](debian/icons/inertia_scroller.png)
+![Icon](debian/icons/momentum_mouse.png)
 
 ## The Problem
 
@@ -18,7 +18,7 @@ Scrolling with a mouse on Linux can be a jarring experience. Each notch of the s
 
 ## The Solution
 
-Inertia Scroller solves this by:
+momentum mouse solves this by:
 
 1. Intercepting your mouse's scroll wheel events
 2. Applying physics-based inertia and momentum calculations
@@ -53,7 +53,7 @@ Instead of content jumping in fixed increments, it glides naturally with momentu
 
 ```bash
 # Download the latest .deb package
-wget https://github.com/AshMartian/inertia_scroller/releases/latest/download/inertia-scroller_0.3.0_amd64.deb
+wget https://github.com/AshMartian/momentum_mouse/releases/latest/download/inertia-scroller_0.3.0_amd64.deb
 
 # Install the package
 sudo dpkg -i inertia-scroller_0.3.0_amd64.deb
@@ -69,7 +69,7 @@ sudo apt-get install -f
 ```bash
 
 # Clone the repository
-git clone https://github.com/AshMartian/inertia_scroller.git
+git clone https://github.com/AshMartian/momentum_mouse.git
 cd inertia-scroller
 
 # Install dependencies
@@ -78,22 +78,22 @@ cd inertia-scroller
 # Build the project
 make
 
-sudo ./inertia_scroller -h
+sudo ./momentum_mouse -h
 
 # Install (optional)
 sudo make install
 
 # Start the service
-sudo systemctl start inertia_scroller.service
+sudo systemctl start momentum_mouse.service
 ```
 
 ## Configuration
 
-Inertia Scroller can be configured through:
+momentum mouse can be configured through:
 
 1. Command-line arguments
-2. Configuration files at `/etc/inertia_scroller.conf` (system-wide)
-3. Via the GUI! Installed as "Inertia Scroller Settings"
+2. Configuration files at `/etc/momentum_mouse.conf` (system-wide)
+3. Via the GUI! Installed as "momentum mouse Settings"
 
 ![Settings Window](docs/gui-v0.3.0.png)
 
@@ -128,14 +128,14 @@ friction=2.0
 max_velocity=0.8
 ```
 
-After updating your configuration, run `sudo systemctl restart inertia_scroller.service`
+After updating your configuration, run `sudo systemctl restart momentum_mouse.service`
 
 ### Command Line Usage
 
 ```
-Inertia Scroller - Smooth scrolling for Linux
+momentum mouse - Smooth scrolling for Linux
 
-Usage: inertia_scroller [OPTIONS] [DEVICE_PATH]
+Usage: momentum_mouse [OPTIONS] [DEVICE_PATH]
 
 Options:
   --help, -h                  Show this help message and exit
@@ -161,8 +161,8 @@ If DEVICE_PATH is provided, use that input device instead of auto-detecting
 
 ### Common Issues
 
-1. **No effect on scrolling**: Make sure the service is running with `systemctl status inertia_scroller.service`
-2. **Wrong mouse detected**: Specify your mouse device path directly with `inertia_scroller /dev/input/eventX`
+1. **No effect on scrolling**: Make sure the service is running with `systemctl status momentum_mouse.service`
+2. **Wrong mouse detected**: Specify your mouse device path directly with `momentum_mouse /dev/input/eventX`
    - Check available input devices with `evtest`
 3. **Conflicts with other software**: Try disabling the `--grab` option if other applications need access to your mouse
 
@@ -171,12 +171,12 @@ If DEVICE_PATH is provided, use that input device instead of auto-detecting
 Check the system logs for troubleshooting:
 
 ```bash
-journalctl -u inertia_scroller.service
+journalctl -u momentum_mouse.service
 ```
 
 ### Disable
 
-Don't like it? Sorry, run `sudo systemctl stop inertia_scroller.service` :(
+Don't like it? Sorry, run `sudo systemctl stop momentum_mouse.service` :(
 
 ## Contributing
 

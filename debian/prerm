@@ -1,8 +1,8 @@
 #!/bin/sh
 set -e
 if [ "$1" = "remove" ]; then
-    systemctl stop inertia_scroller.service || true
-    systemctl disable inertia_scroller.service || true
+    systemctl stop momentum_mouse.service || true
+    systemctl disable momentum_mouse.service || true
     systemctl daemon-reload
 fi
 exit 0

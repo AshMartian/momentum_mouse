@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "inertia_scroller.h"
+#include "momentum_mouse.h"
 
 // Load configuration from the specified file
 void load_config_file(const char *filename) {

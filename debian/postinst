@@ -2,7 +2,7 @@
 set -e
 if [ "$1" = "configure" ]; then
     systemctl daemon-reload
-    systemctl enable inertia_scroller.service
-    systemctl start inertia_scroller.service
+    systemctl enable momentum_mouse.service
+    systemctl start momentum_mouse.service
 fi
 exit 0

@@ -1,5 +1,5 @@
-#ifndef INERTIA_SCROLLER_H
-#define INERTIA_SCROLLER_H
+#ifndef momentum_mouse_H
+#define momentum_mouse_H
 
 // Include the input_event struct definition
 #include <linux/input.h>

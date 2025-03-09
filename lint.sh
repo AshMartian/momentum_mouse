@@ -1,6 +1,6 @@
 #!/bin/bash
 # If no argument is provided, use the default file
-FILE_TO_LINT=${1:-src/inertia_scroller.c}
+FILE_TO_LINT=${1:-src/momentum_mouse.c}
 
 # Check if we're linting a GUI file
 if [[ "$FILE_TO_LINT" == gui/* ]]; then

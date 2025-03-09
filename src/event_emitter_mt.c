@@ -7,7 +7,7 @@
 #include <sys/time.h>
 #include <X11/Xlib.h>
 #include <math.h>
-#include "inertia_scroller.h"
+#include "momentum_mouse.h"
 
 // External references to inertia logic variables
 extern double current_position;
@@ -96,7 +96,7 @@ int setup_virtual_multitouch_device(void) {
     // Configure the virtual device
     struct uinput_user_dev uidev;
     memset(&uidev, 0, sizeof(uidev));
-    snprintf(uidev.name, UINPUT_MAX_NAME_SIZE, "Inertia Scroller Touchpad");
+    snprintf(uidev.name, UINPUT_MAX_NAME_SIZE, "momentum mouse Touchpad");
     uidev.id.bustype = BUS_USB;
     uidev.id.vendor  = 0x1234;
     uidev.id.product = 0x5678;

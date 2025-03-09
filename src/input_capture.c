@@ -6,7 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <limits.h>
-#include "inertia_scroller.h"
+#include "momentum_mouse.h"
 
 static struct libevdev *evdev = NULL;
 static char *mouse_device_path = NULL;
