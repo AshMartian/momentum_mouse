@@ -1,10 +1,17 @@
+momentum-mouse (0.4.0) unstable; urgency=medium
+
+  * Rebrand to Momentum mouse
+  
+
+ -- Ash Martian <dev@ashmartian.com>  Mon, 09 Mar 2024 12:00:00 +0000
+
 inertia-scroller (0.3.0) unstable; urgency=medium
 
   * Simplified configuration system to use only system-wide config
   * GUI now updates system config directly with admin privileges
   * Removed complex user config detection logic
 
- -- Ash Martian <dev@ashmartian.com>  Mon, 10 Mar 2024 12:00:00 +0000
+ -- Ash Martian <dev@ashmartian.com>  Mon, 09 Mar 2024 12:00:00 +0000
 
 inertia-scroller (0.1.2) unstable; urgency=medium
 
