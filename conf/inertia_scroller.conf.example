@@ -1,0 +1,29 @@
+# Inertia Scroller Configuration
+# This file should be placed at /etc/inertia_scroller.conf
+
+# Enable or disable multitouch scrolling (true/false or 1/0)
+# multitouch=true
+
+# Grab the input device exclusively (true/false or 1/0)
+# grab=false
+
+# Use natural scrolling direction (true/false or 1/0)
+# natural=false
+
+# Use horizontal scrolling instead of vertical (true/false or 1/0)
+# horizontal=false
+
+# Enable debug logging (true/false or 1/0)
+# debug=false
+
+# Scroll sensitivity (default: 1.0)
+# sensitivity=1.0
+
+# Scroll multiplier (default: 1.0)
+# multiplier=1.0
+
+# Scroll friction (default: 1.0)
+# friction=1.0
+
+# Maximum velocity factor (default: 0.8)
+# max_velocity=0.8

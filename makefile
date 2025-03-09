@@ -14,6 +14,24 @@ backup:
 		mv $(TARGET) $(TARGET)-prev 2>/dev/null || true; \
 	fi
 
+prefix = /usr/local
+bindir = $(prefix)/bin
+sysconfdir = /etc
+systemddir = /lib/systemd/system
+
+install: $(TARGET)
+	install -d $(DESTDIR)$(bindir)
+	install -m 755 $(TARGET) $(DESTDIR)$(bindir)/$(TARGET)
+	install -d $(DESTDIR)$(sysconfdir)
+	install -m 644 conf/inertia_scroller.conf.example $(DESTDIR)$(sysconfdir)/inertia_scroller.conf
+	install -d $(DESTDIR)$(systemddir)
+	install -m 644 debian/inertia_scroller.service $(DESTDIR)$(systemddir)/inertia_scroller.service
+
+uninstall:
+	rm -f $(DESTDIR)$(bindir)/$(TARGET)
+	rm -f $(DESTDIR)$(sysconfdir)/inertia_scroller.conf
+	rm -f $(DESTDIR)$(systemddir)/inertia_scroller.service
+
 $(TARGET): $(OBJS)
 	$(CC) -o $@ $^ $(LDFLAGS)
 

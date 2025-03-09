@@ -1,0 +1,5 @@
+inertia-scroller (0.1.0) unstable; urgency=medium
+
+  * Initial release.
+
+ -- Ash Martian <dev@ashmartian.com>  $(date -R)

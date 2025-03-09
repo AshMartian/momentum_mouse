@@ -3,12 +3,14 @@
 #include <unistd.h>
 #include <string.h>
 #include <limits.h>
+#include <syslog.h>
 #include "inertia_scroller.h"
 #include <linux/limits.h>
 
 // Global configuration variables
 int use_multitouch = 1;
 int grab_device = 0;  // Default to not grabbing
+int daemon_mode = 0;  // Default to foreground mode
 ScrollDirection scroll_direction = SCROLL_DIRECTION_TRADITIONAL;  // Default
 ScrollAxis scroll_axis = SCROLL_AXIS_VERTICAL;  // Default to vertical scrolling
 int auto_detect_direction = 1;  // Try to auto-detect by default
@@ -54,6 +56,7 @@ int main(int argc, char *argv[]) {
             printf("                              Lower values make scrolling last longer\n");
             printf("  --max-velocity=VALUE        Set maximum velocity as screen factor (default: 0.8)\n");
             printf("                              Higher values allow faster scrolling\n");
+            printf("  --daemon                    Run as a background daemon\n");
             printf("\n");
             printf("If DEVICE_PATH is provided, use that input device instead of auto-detecting\n");
             return 0;
@@ -76,6 +79,10 @@ int main(int argc, char *argv[]) {
             }
         } else if (strcmp(argv[i], "--no-auto-detect") == 0) {
             auto_detect_direction = 0;  // Don't auto-detect
+        } else if (strcmp(argv[i], "--daemon") == 0) {
+            daemon_mode = 1;
+            // When in daemon mode, we typically don't want debug output
+            debug_mode = 0;
         } else if (strncmp(argv[i], "--sensitivity=", 14) == 0) {
             // Parse sensitivity value
             double value = atof(argv[i] + 14);
@@ -129,6 +136,19 @@ int main(int argc, char *argv[]) {
                 printf("Could not auto-detect scroll direction, using traditional\n");
             }
         }
+    }
+    
+    // Daemonize if requested
+    if (daemon_mode) {
+        // Daemonize the process
+        if (daemon(0, 0) < 0) {
+            fprintf(stderr, "Failed to daemonize process\n");
+            return 1;
+        }
+        
+        // Open syslog for logging
+        openlog("inertia_scroller", LOG_PID, LOG_DAEMON);
+        syslog(LOG_INFO, "Inertia Scroller daemon started");
     }
     
     if (debug_mode) {
@@ -188,6 +208,11 @@ int main(int argc, char *argv[]) {
         destroy_virtual_multitouch_device();
     } else {
         destroy_virtual_device();
+    }
+    
+    if (daemon_mode) {
+        syslog(LOG_INFO, "Inertia Scroller daemon stopped");
+        closelog();
     }
     
     return 0;

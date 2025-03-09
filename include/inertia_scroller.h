@@ -21,6 +21,7 @@ extern int grab_device;  // Whether to grab the device exclusively
 extern ScrollDirection scroll_direction;
 extern ScrollAxis scroll_axis;     // Whether to scroll vertically or horizontally
 extern int debug_mode;  // Whether to output debug messages
+extern int daemon_mode; // Whether to run as a daemon
 extern double scroll_sensitivity;  // How much inertia is applied per scroll
 extern double scroll_multiplier;   // How much the initial scroll is multiplied
 extern double scroll_friction;     // How quickly scrolling slows down (higher = faster stop)

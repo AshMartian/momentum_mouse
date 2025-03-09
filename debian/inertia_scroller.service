@@ -1,0 +1,12 @@
+[Unit]
+Description=Inertia Scroller Daemon
+After=graphical.target
+
+[Service]
+Type=forking
+ExecStart=/usr/bin/inertia_scroller --daemon
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,8 @@
+#!/bin/sh
+set -e
+if [ "$1" = "configure" ]; then
+    systemctl daemon-reload
+    systemctl enable inertia_scroller.service
+    systemctl start inertia_scroller.service
+fi
+exit 0
