@@ -1,3 +1,4 @@
 *.o
 .env
 .aider*
+inertia_scroller-prev

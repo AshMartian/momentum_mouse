@@ -16,6 +16,7 @@ int debug_mode = 0;  // Default to no debug output
 double scroll_sensitivity = 1.0;  // Default sensitivity
 double scroll_multiplier = 1.0;   // Default multiplier
 double scroll_friction = 1.0;     // Default friction
+double max_velocity_factor = 0.5; // Default max velocity (50% of screen dimension)
 
 int main(int argc, char *argv[]) {
     // Parse command line arguments
@@ -51,6 +52,8 @@ int main(int argc, char *argv[]) {
             printf("  --multiplier=VALUE          Set repeating scroll multiplier (default: 1.0)\n");
             printf("  --friction=VALUE            Set scroll friction (default: 1.0)\n");
             printf("                              Lower values make scrolling last longer\n");
+            printf("  --max-velocity=VALUE        Set maximum velocity as screen factor (default: 0.5)\n");
+            printf("                              Higher values allow faster scrolling\n");
             printf("\n");
             printf("If DEVICE_PATH is provided, use that input device instead of auto-detecting\n");
             return 0;
@@ -99,6 +102,15 @@ int main(int argc, char *argv[]) {
             } else {
                 fprintf(stderr, "Invalid friction value: %s\n", argv[i] + 11);
                 fprintf(stderr, "Using default friction: 1.0\n");
+            }
+        } else if (strncmp(argv[i], "--max-velocity=", 15) == 0) {
+            // Parse max velocity factor
+            double value = atof(argv[i] + 15);
+            if (value > 0.0) {
+                max_velocity_factor = value;
+            } else {
+                fprintf(stderr, "Invalid max velocity factor: %s\n", argv[i] + 15);
+                fprintf(stderr, "Using default max velocity factor: 0.5\n");
             }
         } else if (argv[i][0] != '-') {
             // Assume this is the device path

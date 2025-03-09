@@ -120,6 +120,14 @@ void load_config_file(const char *filename) {
                 } else if (strcmp(value, "false") == 0 || strcmp(value, "0") == 0) {
                     debug_mode = 0;
                 }
+            } else if (strcmp(k, "max_velocity") == 0) {
+                double val = atof(value);
+                if (val > 0.0) {
+                    max_velocity_factor = val;
+                    if (debug_mode) {
+                        printf("Config: max_velocity=%.2f\n", max_velocity_factor);
+                    }
+                }
             }
         }
     }

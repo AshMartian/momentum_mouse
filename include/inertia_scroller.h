@@ -26,6 +26,20 @@ extern double scroll_multiplier;   // How much the initial scroll is multiplied
 extern double scroll_friction;     // How quickly scrolling slows down (higher = faster stop)
 extern int auto_detect_direction;
 extern int use_multitouch;
+extern double current_velocity;    // Current scrolling velocity
+extern double current_position;    // Current scrolling position
+extern double max_velocity_factor; // Maximum velocity as a factor of screen dimensions
+// Structure to track boundary reset information
+typedef struct {
+    struct timeval reset_time;
+    double reset_velocity;
+    double reset_position;
+    int reset_direction;
+} BoundaryResetInfo;
+
+extern BoundaryResetInfo boundary_reset_info;
+extern int boundary_reset_in_progress;
+extern struct timeval last_boundary_reset_time;
 
 // Original event emitter functions
 int setup_virtual_device(void);
