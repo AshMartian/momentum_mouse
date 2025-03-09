@@ -22,13 +22,11 @@ Inertia Scroller solves this by:
 2. Applying physics-based inertia and momentum calculations
 3. Emulating natural touchpad gestures to produce smooth scrolling
 
-Instead of content jumping in fixed increments, it glides naturally with momentum, gradually slowing down just like a physical object would. This creates a more intuitive, comfortable, and visually pleasing scrolling experience.
+Instead of content jumping in fixed increments, it glides naturally with momentum, gradually slowing down just like a physical object would. This creates a more intuitive, comfortable, and visually pleasing scrolling experience. Kinematic scrolling in Ubuntu is finally here!
 
 ### Demo
 
 <video src="https://github.com/user-attachments/assets/cb221dfb-f96d-47ca-9db2-61940c18c867"></video>
-
-
 
 ## Features
 
@@ -38,6 +36,12 @@ Instead of content jumping in fixed increments, it glides naturally with momentu
 - **Configurable Physics**: Adjust sensitivity, friction, and velocity to match your preferences
 - **System Integration**: Runs as a background service with minimal resource usage
 - **Auto-detection**: Automatically detects your system's scroll direction settings
+
+## Usage
+
+- Use your scroll wheel like you normally would!
+- Click to stop the inertia
+- Move your mouse to dampen the inertia
 
 ## Installation
 
@@ -59,12 +63,13 @@ sudo apt-get install -f
 ### Building from Source
 
 ```bash
-# Install dependencies
-sudo apt-get install build-essential libudev-dev libevdev-dev libx11-dev
 
 # Clone the repository
 git clone https://github.com/AshMartian/inertia_scroller.git
 cd inertia-scroller
+
+# Install dependencies
+./setup.sh
 
 # Build the project
 make
@@ -147,6 +152,7 @@ If DEVICE_PATH is provided, use that input device instead of auto-detecting
 
 1. **No effect on scrolling**: Make sure the service is running with `systemctl status inertia_scroller.service`
 2. **Wrong mouse detected**: Specify your mouse device path directly with `inertia_scroller /dev/input/eventX`
+   - Check available input devices with `evtest`
 3. **Conflicts with other software**: Try disabling the `--grab` option if other applications need access to your mouse
 
 ### Logs
