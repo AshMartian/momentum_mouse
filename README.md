@@ -95,7 +95,7 @@ Inertia Scroller can be configured through:
 2. Configuration files at `/etc/inertia_scroller.conf` (system-wide)
 3. Via the GUI! Installed as "Inertia Scroller Settings"
 
-~[Settings Window](docs/gui-v0.3.0.png)
+![Settings Window](docs/gui-v0.3.0.png)
 
 ### Configuration File Reference
 
