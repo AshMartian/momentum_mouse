@@ -31,7 +31,7 @@ int main(int argc, char *argv[]) {
             printf("  --traditional               Force traditional scrolling direction\n");
             printf("  --no-auto-detect            Don't auto-detect system scroll direction\n");
             printf("  --sensitivity=VALUE         Set scroll sensitivity (default: 1.0)\n");
-            printf("  --multiplier=VALUE          Set initial scroll multiplier (default: 1.0)\n");
+            printf("  --multiplier=VALUE          Set repeating scroll multiplier (default: 1.0)\n");
             printf("  --friction=VALUE            Set scroll friction (default: 1.0)\n");
             printf("                              Lower values make scrolling last longer\n");
             printf("\n");
