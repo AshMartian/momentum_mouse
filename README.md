@@ -56,10 +56,10 @@ Instead of content jumping in fixed increments, it glides naturally with momentu
 
 ```bash
 # Download the latest .deb package
-wget https://github.com/AshMartian/inertia_scroller/releases/latest/download/inertia-scroller_0.1.0_amd64.deb
+wget https://github.com/AshMartian/inertia_scroller/releases/latest/download/inertia-scroller_0.1.2_amd64.deb
 
 # Install the package
-sudo dpkg -i inertia-scroller_0.1.0_amd64.deb
+sudo dpkg -i inertia-scroller_0.1.2_amd64.deb
 
 # Install dependencies if needed
 sudo apt-get install -f
@@ -119,12 +119,14 @@ sensitivity=1.0
 # Scroll multiplier (default: 1.0)
 multiplier=1.0
 
-# Scroll friction (default: 1.0)
-friction=1.0
+# Scroll friction (default: 2.0)
+friction=2.0
 
 # Maximum velocity factor (default: 0.8)
 max_velocity=0.8
 ```
+
+After updating your configuration, run `sudo systemctl restart inertia_scroller.service`
 
 ### Command Line Usage
 
@@ -169,6 +171,10 @@ Check the system logs for troubleshooting:
 ```bash
 journalctl -u inertia_scroller.service
 ```
+
+### Disable
+
+Don't like it? Sorry, run `sudo systemctl stop inertia_scroller.service` :(
 
 ## Contributing
 

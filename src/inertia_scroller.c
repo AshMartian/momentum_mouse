@@ -17,7 +17,7 @@ int auto_detect_direction = 1;  // Try to auto-detect by default
 int debug_mode = 0;  // Default to no debug output
 double scroll_sensitivity = 1.0;  // Default sensitivity
 double scroll_multiplier = 1.0;   // Default multiplier
-double scroll_friction = 1.0;     // Default friction
+double scroll_friction = 2.0;     // Default friction
 double max_velocity_factor = 0.8; // Default max velocity (80% of screen dimension)
 
 int main(int argc, char *argv[]) {

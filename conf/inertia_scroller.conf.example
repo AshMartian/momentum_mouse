@@ -22,8 +22,8 @@
 # Scroll multiplier (default: 1.0)
 # multiplier=1.0
 
-# Scroll friction (default: 1.0)
-# friction=1.0
+# Scroll friction (default: 2.0)
+# friction=2.0
 
 # Maximum velocity factor (default: 0.8)
 # max_velocity=0.8
