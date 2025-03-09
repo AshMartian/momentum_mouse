@@ -30,11 +30,6 @@ Instead of content jumping in fixed increments, it glides naturally with momentu
 
 <video src="https://github.com/user-attachments/assets/cb221dfb-f96d-47ca-9db2-61940c18c867"></video>
 
-
-
-
-
-
 ## Features
 
 - **Smooth Inertial Scrolling**: Content continues to move after you stop scrolling, gradually slowing down
