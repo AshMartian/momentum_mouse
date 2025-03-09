@@ -29,6 +29,9 @@ void update_inertia(int delta) {
         delta = -delta;
     }
     
+    // Apply the initial scroll multiplier to the delta
+    delta = (int)(delta * scroll_multiplier);
+    
     // Get the current time for timing calculations
     struct timeval now;
     gettimeofday(&now, NULL);
@@ -43,14 +46,14 @@ void update_inertia(int delta) {
     
     // Determine if this is a continuation of scrolling in the same direction
     // Use a smaller initial velocity for single scroll events
-    double velocity_factor = 5.0;  // Reduced from 10.0 for smaller initial effect
+    double velocity_factor = 5.0 * scroll_sensitivity;  // Reduced from 10.0 for smaller initial effect
     
     if (inertia_active) {
         // If scrolling in the same direction as current velocity and within a short time window
         if (((current_velocity > 0 && delta > 0) || (current_velocity < 0 && delta < 0)) && dt < 0.3) {
             // Enhance the effect for consecutive scrolls in the same direction
             // The multiplier increases with each scroll in the same direction
-            velocity_factor = 8.0 + (fabs(current_velocity) / 5.0);  // Grows with existing velocity
+            velocity_factor = (8.0 + (fabs(current_velocity) / 5.0)) * scroll_sensitivity;  // Grows with existing velocity
             
             if (debug_mode) {
                 printf("Consecutive scroll in same direction, velocity factor: %.2f\n", velocity_factor);
@@ -65,7 +68,7 @@ void update_inertia(int delta) {
             }
             
             // Then add the new input, with normal responsiveness
-            velocity_factor = 10.0;  // Use standard factor for direction changes
+            velocity_factor = 10.0 * scroll_sensitivity;  // Use standard factor for direction changes
         }
     }
     
@@ -73,7 +76,7 @@ void update_inertia(int delta) {
     current_velocity += (double)delta * velocity_factor;
     
     // Update position - use a smaller factor for smoother initial movement
-    current_position += (double)delta * 15.0;  // Reduced from 20.0
+    current_position += (double)delta * 15.0 * scroll_sensitivity;  // Reduced from 20.0
     
     if (debug_mode) {
         printf("Updated velocity: %.2f, position: %.2f\n", current_velocity, current_position);
@@ -111,10 +114,13 @@ void apply_mouse_friction(int movement_magnitude) {
     
     // Calculate friction factor based on movement magnitude
     // Make it much gentler - small movements = very small friction
-    double friction_factor = 0.03 + (movement_magnitude * 0.0001);
+    // Adjust friction based on sensitivity and scroll_friction
+    double friction_factor = (0.03 + (movement_magnitude * 0.0001)) * scroll_friction / sqrt(scroll_sensitivity);
     
-    // Cap the friction factor to a much lower value
-    if (friction_factor > 0.05) friction_factor = 0.05;  // Reduced from 0.95
+    // Cap the friction factor to a lower value
+    // Adjust cap based on sensitivity and scroll_friction
+    double max_friction = 0.05 * scroll_friction / sqrt(scroll_sensitivity);
+    if (friction_factor > max_friction) friction_factor = max_friction;  // Reduced from 0.95
     
     double old_velocity = current_velocity;
     
@@ -163,8 +169,8 @@ void process_inertia(void) {
     }
     
     // Apply an exponential decay to simulate friction.
-    // Adjust the friction coefficient (here set to 2.0) to tune deceleration.
-    const double friction = 2.0;
+    // Use the scroll_friction parameter to control deceleration
+    const double friction = 2.0 * scroll_friction;
     current_velocity *= exp(-friction * dt);
     
     // Sleep a little to approximate a 60 FPS update (the dt measurement handles timing accuracy).
@@ -191,19 +197,21 @@ void process_inertia_mt(void) {
     double dt = time_diff_in_seconds(&last_time, &now);
     last_time = now;
     
-    // Apply friction to velocity - use a gentler friction for smoother scrolling
-    const double friction = 1.2;  // Reduced from 1.5
+    // Apply friction to velocity - use the scroll_friction parameter
+    // Adjust friction based on sensitivity (inverse relationship)
+    const double friction = 1.2 * scroll_friction / sqrt(scroll_sensitivity);
     double old_velocity = current_velocity;
     
     current_velocity *= exp(-friction * dt);
     
     if (debug_mode && fabs(old_velocity - current_velocity) > 1.0) {
-        printf("Time-based friction: dt=%.3fs, velocity: %.2f -> %.2f\n", 
-               dt, old_velocity, current_velocity);
+        printf("Time-based friction: dt=%.3fs, friction=%.2f, velocity: %.2f -> %.2f\n", 
+               dt, friction, old_velocity, current_velocity);
     }
     
     // Update position based on velocity
-    double position_delta = current_velocity * dt * 40.0;  // Reduced from 60.0 for smoother scrolling
+    // Apply sensitivity to the position delta factor
+    double position_delta = current_velocity * dt * 40.0 * scroll_sensitivity;  // Reduced from 60.0 for smoother scrolling
     current_position += position_delta;
     
     // If velocity is negligible, stop inertia

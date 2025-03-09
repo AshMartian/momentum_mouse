@@ -14,6 +14,9 @@ typedef enum {
 extern int grab_device;  // Whether to grab the device exclusively
 extern ScrollDirection scroll_direction;
 extern int debug_mode;  // Whether to output debug messages
+extern double scroll_sensitivity;  // How much inertia is applied per scroll
+extern double scroll_multiplier;   // How much the initial scroll is multiplied
+extern double scroll_friction;     // How quickly scrolling slows down (higher = faster stop)
 
 // Original event emitter functions
 int setup_virtual_device(void);
