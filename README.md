@@ -24,9 +24,16 @@ Inertia Scroller solves this by:
 
 Instead of content jumping in fixed increments, it glides naturally with momentum, gradually slowing down just like a physical object would. This creates a more intuitive, comfortable, and visually pleasing scrolling experience. Kinematic scrolling in Ubuntu is finally here!
 
-### Demo
+### Demos
+
+<video src="https://github.com/user-attachments/assets/d42a480c-b53e-4cd7-b151-461f03fb3ea0"></video>
 
 <video src="https://github.com/user-attachments/assets/cb221dfb-f96d-47ca-9db2-61940c18c867"></video>
+
+
+
+
+
 
 ## Features
 
