@@ -20,7 +20,58 @@
 // Function declarations
 static GKeyFile* load_config(void);
 static void save_config(GKeyFile *key_file);
-static gchar* get_config_file_path(void);
+static gboolean detect_gnome_natural_scrolling(void);
+static void set_gnome_natural_scrolling(gboolean natural);
+
+// Function to detect GNOME natural scrolling setting
+static gboolean detect_gnome_natural_scrolling(void) {
+    gboolean natural = FALSE;
+    GError *error = NULL;
+    gchar *stdout_data = NULL;
+    gint exit_status;
+    
+    // Try to get the GNOME natural scrolling setting
+    if (g_spawn_command_line_sync(
+            "gsettings get org.gnome.desktop.peripherals.mouse natural-scroll",
+            &stdout_data, NULL, &exit_status, &error)) {
+        
+        if (exit_status == 0 && stdout_data != NULL) {
+            // Trim whitespace
+            g_strstrip(stdout_data);
+            
+            // Check if it's set to true
+            if (g_strcmp0(stdout_data, "true") == 0) {
+                natural = TRUE;
+            }
+        }
+    }
+    
+    if (error) {
+        g_error_free(error);
+    }
+    
+    g_free(stdout_data);
+    return natural;
+}
+
+// Function to set GNOME natural scrolling setting
+static void set_gnome_natural_scrolling(gboolean natural) {
+    GError *error = NULL;
+    gchar *command = g_strdup_printf(
+        "gsettings set org.gnome.desktop.peripherals.mouse natural-scroll %s",
+        natural ? "true" : "false");
+    
+    // Try to set the GNOME setting, but don't worry if it fails
+    g_spawn_command_line_async(command, &error);
+    
+    if (error) {
+        // Just log the error, don't show to user
+        g_warning("Failed to set GNOME natural scrolling: %s", error->message);
+        g_error_free(error);
+    }
+    
+    g_free(command);
+}
 
 // Function to handle apply button click
 static void on_apply_clicked(GtkWidget *widget, gpointer data) {
@@ -32,11 +83,13 @@ static void on_apply_clicked(GtkWidget *widget, gpointer data) {
     GtkWidget *mult_scale = widgets[1];
     GtkWidget *fric_scale = widgets[2];
     GtkWidget *vel_scale = widgets[3];
+    GtkWidget *natural_switch = widgets[4];
 
     gdouble sensitivity = gtk_range_get_value(GTK_RANGE(sens_scale));
     gdouble multiplier = gtk_range_get_value(GTK_RANGE(mult_scale));
     gdouble friction = gtk_range_get_value(GTK_RANGE(fric_scale));
     gdouble max_velocity = gtk_range_get_value(GTK_RANGE(vel_scale));
+    gboolean natural = gtk_switch_get_active(GTK_SWITCH(natural_switch));
 
     // Load existing config, update values, and save.
     GKeyFile *config = load_config();
@@ -44,6 +97,10 @@ static void on_apply_clicked(GtkWidget *widget, gpointer data) {
     g_key_file_set_double(config, CONFIG_GROUP, "multiplier", multiplier);
     g_key_file_set_double(config, CONFIG_GROUP, "friction", friction);
     g_key_file_set_double(config, CONFIG_GROUP, "max_velocity", max_velocity);
+    g_key_file_set_boolean(config, CONFIG_GROUP, "natural", natural);
+    
+    // Optionally update the GNOME setting
+    set_gnome_natural_scrolling(natural);
     save_config(config);
     g_key_file_free(config);
 }
@@ -59,11 +116,6 @@ static GKeyFile* load_config(void) {
     return key_file;
 }
 
-// Get the path to the configuration file
-static gchar* get_config_file_path(void) {
-    // Simply return the system config file path
-    return g_strdup(SYSTEM_CONFIG_FILE);
-}
 
 // Save settings from key_file back to disk.
 static void save_config(GKeyFile *key_file) {
@@ -182,15 +234,38 @@ int main(int argc, char *argv[]) {
     gtk_grid_attach(GTK_GRID(grid), vel_label, 0, 3, 1, 1);
     gtk_grid_attach(GTK_GRID(grid), vel_scale, 1, 3, 1, 1);
 
+    // Natural scrolling switch
+    GtkWidget *natural_label = gtk_label_new("Natural Scrolling:");
+    gtk_widget_set_halign(natural_label, GTK_ALIGN_END);
+    GtkWidget *natural_switch = gtk_switch_new();
+
+    // Try to detect current GNOME setting
+    gboolean natural_detected = detect_gnome_natural_scrolling();
+
+    // Read from config or use detected value
+    gboolean natural = FALSE;
+    if (g_key_file_has_key(config, CONFIG_GROUP, "natural", NULL)) {
+        natural = g_key_file_get_boolean(config, CONFIG_GROUP, "natural", NULL);
+    } else {
+        natural = natural_detected;
+    }
+
+    gtk_switch_set_active(GTK_SWITCH(natural_switch), natural);
+    gtk_widget_set_halign(natural_switch, GTK_ALIGN_END);
+    gtk_widget_set_tooltip_text(natural_switch, 
+        "When enabled, scrolling direction is reversed to match touchpad behavior (content follows finger movement).");
+    gtk_grid_attach(GTK_GRID(grid), natural_label, 0, 4, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), natural_switch, 1, 4, 1, 1);
+
     // Apply button
     GtkWidget *apply_button = gtk_button_new_with_label("Apply");
     gtk_widget_set_hexpand(apply_button, TRUE);
     gtk_widget_set_halign(apply_button, GTK_ALIGN_FILL);
-    gtk_grid_attach(GTK_GRID(grid), apply_button, 0, 4, 2, 1);
+    gtk_grid_attach(GTK_GRID(grid), apply_button, 0, 5, 2, 1);
     
     // Create an array of widget pointers to pass as data
     GtkWidget *widgets[] = {
-        sens_scale, mult_scale, fric_scale, vel_scale
+        sens_scale, mult_scale, fric_scale, vel_scale, natural_switch
     };
     g_signal_connect(apply_button, "clicked", G_CALLBACK(on_apply_clicked), widgets);
 

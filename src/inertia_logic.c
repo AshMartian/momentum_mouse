@@ -368,7 +368,7 @@ void process_inertia_mt(void) {
     current_position += position_delta;
     
     // Stop inertia if velocity is too low
-    if (fabs(current_velocity) < 0.5) {
+    if (fabs(current_velocity) < 0.025) {
         if (debug_mode) {
             printf("Velocity too low (%.2f), stopping inertia\n", current_velocity);
         }

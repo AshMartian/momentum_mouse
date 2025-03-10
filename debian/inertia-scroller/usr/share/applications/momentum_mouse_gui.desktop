@@ -1,0 +1,9 @@
+[Desktop Entry]
+ Name=momentum mouse Settings
+ Comment=Configure smooth scrolling settings
+ Exec=/usr/bin/momentum_mouse_gui
+ Icon=momentum_mouse
+ Terminal=false
+ Type=Application
+ Categories=Settings;System;
+ Keywords=mouse;scroll;settings;kinetic;
