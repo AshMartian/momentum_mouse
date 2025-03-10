@@ -53,10 +53,10 @@ Instead of content jumping in fixed increments, it glides naturally with momentu
 
 ```bash
 # Download the latest .deb package
-wget https://github.com/AshMartian/momentum_mouse/releases/latest/download/inertia-scroller_0.3.0_amd64.deb
+wget https://github.com/AshMartian/momentum_mouse/releases/latest/download/momentum-mouse_0.3.0_amd64.deb
 
 # Install the package
-sudo dpkg -i inertia-scroller_0.3.0_amd64.deb
+sudo dpkg -i momentum-mouse_0.3.0_amd64.deb
 
 # Install dependencies if needed
 sudo apt-get install -f
@@ -70,7 +70,7 @@ sudo apt-get install -f
 
 # Clone the repository
 git clone https://github.com/AshMartian/momentum_mouse.git
-cd inertia-scroller
+cd momentum-mouse
 
 # Install dependencies
 ./setup.sh

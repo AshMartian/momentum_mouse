@@ -10,9 +10,9 @@ override_dh_auto_build:
 override_dh_auto_install:
 	$(MAKE) DESTDIR=$$(pwd)/debian/momentum-mouse prefix=/usr install
 	# Install GUI binary
-	install -D -m 755 gui/momentum_mouse_gui $$(pwd)/debian/inertia-scroller/usr/bin/momentum_mouse_gui
+	install -D -m 755 gui/momentum_mouse_gui $$(pwd)/debian/momentum-mouse/usr/bin/momentum_mouse_gui
 	# Install desktop file
-	install -D -m 644 debian/momentum_mouse_gui.desktop $$(pwd)/debian/inertia-scroller/usr/share/applications/momentum_mouse_gui.desktop
+	install -D -m 644 debian/momentum_mouse_gui.desktop $$(pwd)/debian/momentum-mouse/usr/share/applications/momentum_mouse_gui.desktop
 	# Install icons
-	install -D -m 644 debian/icons/momentum_mouse.png $$(pwd)/debian/inertia-scroller/usr/share/icons/hicolor/128x128/apps/momentum_mouse.png
-	install -D -m 644 debian/icons/momentum_mouse.png $$(pwd)/debian/inertia-scroller/usr/share/pixmaps/momentum_mouse.png
+	install -D -m 644 debian/icons/momentum_mouse.png $$(pwd)/debian/momentum-mouse/usr/share/icons/hicolor/128x128/apps/momentum_mouse.png
+	install -D -m 644 debian/icons/momentum_mouse.png $$(pwd)/debian/momentum-mouse/usr/share/pixmaps/momentum_mouse.png

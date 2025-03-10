@@ -1,6 +1,7 @@
 momentum-mouse (0.4.0) unstable; urgency=medium
 
   * Rebrand to Momentum mouse
+  * Lower cutoff so 0.1 sensitivity still works
 
  -- Ash Martian <dev@ashmartian.com>  Mon, 09 Mar 2024 12:00:00 +0000
 

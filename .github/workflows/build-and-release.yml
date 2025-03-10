@@ -31,7 +31,7 @@ jobs:
 
           # Move the .deb file to a known location
           mkdir -p artifacts
-          mv ../inertia-scroller_*.deb artifacts/
+          mv ../momentum-mouse_*.deb artifacts/
 
       - name: Upload Debian package as artifact
         uses: actions/upload-artifact@v4
