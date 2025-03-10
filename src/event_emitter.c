@@ -77,11 +77,12 @@ int emit_scroll_event(int value) {
 
 // Pass through all non-scroll events from the original mouse
 int emit_passthrough_event(struct input_event *ev) {
-    // Skip passing through REL_WHEEL or REL_HWHEEL events based on scroll_axis
-    // We handle those with inertia
-    if (ev->type == EV_REL && 
-        ((scroll_axis == SCROLL_AXIS_VERTICAL && ev->code == REL_WHEEL) ||
-         (scroll_axis == SCROLL_AXIS_HORIZONTAL && ev->code == REL_HWHEEL))) {
+    // If grab_device is enabled, block all wheel events completely
+    if (grab_device && ev->type == EV_REL && (ev->code == REL_WHEEL || ev->code == REL_HWHEEL) && ev->value != 0) {
+        if (debug_mode) {
+            printf("Blocking wheel event (grab mode): type=%d, code=%d, value=%d\n", 
+                   ev->type, ev->code, ev->value);
+        }
         return 0;
     }
     

@@ -30,6 +30,10 @@ extern int use_multitouch;
 extern double current_velocity;    // Current scrolling velocity
 extern double current_position;    // Current scrolling position
 extern double max_velocity_factor; // Maximum velocity as a factor of screen dimensions
+extern double sensitivity_divisor; // Divisor for sensitivity when using touchpad
+// Constant for inertia stop threshold
+#define INERTIA_STOP_THRESHOLD 0.5  // Velocity threshold below which inertia stops
+
 // Structure to track boundary reset information
 typedef struct {
     struct timeval reset_time;

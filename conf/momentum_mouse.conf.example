@@ -1,10 +1,7 @@
 # momentum mouse Configuration
 # This file should be placed at /etc/momentum_mouse.conf
 
-# Enable or disable multitouch scrolling (true/false or 1/0)
-# multitouch=true
-
-# Grab the input device exclusively (true/false or 1/0)
+# Grab the input device for exclusive scroll events (true/false or 1/0)
 # grab=false
 
 # Use natural scrolling direction (true/false or 1/0)

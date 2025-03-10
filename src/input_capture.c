@@ -88,14 +88,10 @@ int initialize_input_capture(const char *device_override) {
         return -1;
     }
 
-    // Only grab the device if explicitly requested
-    if (grab_device) {
-        if (ioctl(fd, EVIOCGRAB, 1) < 0) {
-            perror("Failed to grab device");
-            // Continue anyway, don't return error
-        } else if (debug_mode) {
-            printf("Device grabbed exclusively\n");
-        }
+    // Note: We no longer use EVIOCGRAB as it blocks all events
+    // Instead, we'll selectively handle events in capture_input_event
+    if (debug_mode) {
+        printf("Using selective event handling (grab_device=%d)\n", grab_device);
     }
 
     int rc = libevdev_new_from_fd(fd, &evdev);
@@ -127,6 +123,7 @@ int capture_input_event(void) {
     struct input_event ev;
     int rc = libevdev_next_event(evdev, LIBEVDEV_READ_FLAG_NORMAL, &ev);
     if (rc == 0) {
+        // Always handle scroll events with our inertia logic
         if (ev.type == EV_REL && 
             ((scroll_axis == SCROLL_AXIS_VERTICAL && ev.code == REL_WHEEL) ||
              (scroll_axis == SCROLL_AXIS_HORIZONTAL && ev.code == REL_HWHEEL))) {
@@ -138,8 +135,18 @@ int capture_input_event(void) {
             inertia_already_stopped = 0;  // Reset flag when scrolling
             update_inertia(ev.value);
             
-            // We'll let the inertia logic handle emitting events
-            // Don't pass through directly here
+            // If grab_device is enabled, don't pass through the scroll event at all
+            // This prevents the original scroll events from being seen by applications
+            if (grab_device) {
+                return 1;
+            }
+            
+            // If grab_device is disabled, we'll still pass through the original event
+            // This allows both our smooth scrolling and the original scrolling to work
+            // (useful for debugging or if the user prefers this behavior)
+            struct input_event dummy_ev = ev;
+            dummy_ev.value = 0;  // Set to zero to minimize the effect
+            emit_passthrough_event(&dummy_ev);
             return 1;
         }
         // Check for Escape key to reset scrolling (emergency stop)

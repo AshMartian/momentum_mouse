@@ -158,6 +158,14 @@ void load_config_file(const char *filename) {
                         printf("Config: max_velocity=%.2f\n", max_velocity_factor);
                     }
                 }
+            } else if (strcmp(k, "sensitivity_divisor") == 0) {
+                double val = atof(value);
+                if (val > 0.0) {
+                    sensitivity_divisor = val;
+                    if (debug_mode) {
+                        printf("Config: sensitivity_divisor=%.2f\n", sensitivity_divisor);
+                    }
+                }
             }
         }
     }

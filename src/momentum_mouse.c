@@ -11,7 +11,7 @@
 
 // Global configuration variables
 int use_multitouch = 1;
-int grab_device = 0;  // Default to not grabbing
+int grab_device = 1;  // Default to grabbing for better performance
 int daemon_mode = 0;  // Default to foreground mode
 ScrollDirection scroll_direction = SCROLL_DIRECTION_TRADITIONAL;  // Default
 ScrollAxis scroll_axis = SCROLL_AXIS_VERTICAL;  // Default to vertical scrolling
@@ -21,6 +21,7 @@ double scroll_sensitivity = 1.0;  // Default sensitivity
 double scroll_multiplier = 1.0;   // Default multiplier
 double scroll_friction = 2.0;     // Default friction
 double max_velocity_factor = 0.8; // Default max velocity (80% of screen dimension)
+double sensitivity_divisor = 3; // Default sensitivity divisor
 const char *config_file_override = NULL;  // Config file override path
 
 // Implementation of debug_log function
@@ -67,6 +68,8 @@ int main(int argc, char *argv[]) {
             printf("                              Lower values make scrolling last longer\n");
             printf("  --max-velocity=VALUE        Set maximum velocity as screen factor (default: 0.8)\n");
             printf("                              Higher values allow faster scrolling\n");
+            printf("  --sensitivity-divisor=VALUE Set divisor for touchpad sensitivity (default: 2.5)\n");
+            printf("                              Higher values reduce sensitivity for touchpads\n");
             printf("  --config=PATH               Use the specified config file\n");
             printf("  --daemon                    Run as a background daemon\n");
             printf("\n");
@@ -165,6 +168,15 @@ int main(int argc, char *argv[]) {
                 fprintf(stderr, "Invalid max velocity factor: %s\n", argv[i] + 15);
                 fprintf(stderr, "Using default max velocity factor: 0.8\n");
             }
+        } else if (strncmp(argv[i], "--sensitivity-divisor=", 22) == 0) {
+            // Parse sensitivity divisor
+            double value = atof(argv[i] + 22);
+            if (value > 0.0) {
+                sensitivity_divisor = value;
+            } else {
+                fprintf(stderr, "Invalid sensitivity divisor: %s\n", argv[i] + 22);
+                fprintf(stderr, "Using default sensitivity divisor: 1.0\n");
+            }
         } else if (argv[i][0] != '-') {
             // Assume this is the device path
             device_override = argv[i];
@@ -189,8 +201,8 @@ int main(int argc, char *argv[]) {
            scroll_direction == SCROLL_DIRECTION_NATURAL ? "natural" : "traditional",
            scroll_axis == SCROLL_AXIS_HORIZONTAL ? "horizontal" : "vertical",
            debug_mode ? "enabled" : "disabled");
-    debug_log("Sensitivity: %.2f, Multiplier: %.2f, Friction: %.2f\n", 
-           scroll_sensitivity, scroll_multiplier, scroll_friction);
+    debug_log("Sensitivity: %.2f, Multiplier: %.2f, Friction: %.2f, Divisor: %.2f\n", 
+           scroll_sensitivity, scroll_multiplier, scroll_friction, sensitivity_divisor);
     
     // Initialize the virtual device based on the mode first
     if (use_multitouch) {

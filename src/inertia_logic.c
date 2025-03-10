@@ -33,9 +33,6 @@ void update_inertia(int delta) {
         delta = -delta;
     }
     
-    // Apply the initial scroll multiplier to the delta
-    delta = (int)(delta * scroll_multiplier);
-    
     // Get the current time for timing calculations
     struct timeval now;
     gettimeofday(&now, NULL);
@@ -88,19 +85,20 @@ void update_inertia(int delta) {
     double old_velocity = current_velocity;
     
     // Determine if this is a continuation of scrolling in the same direction
-    // Use a smaller initial velocity for single scroll events
-    double velocity_factor = 15.0 * scroll_sensitivity;  // Increased for faster initial scrolling
+    // For initial scroll, use base sensitivity without multiplier
+    double velocity_factor = 30.0 * (scroll_sensitivity / sensitivity_divisor);
     
     if (inertia_active) {
         // If scrolling in the same direction as current velocity and within a short time window
         if (((current_velocity > 0 && delta > 0) || (current_velocity < 0 && delta < 0)) && dt < 0.3) {
             // Enhance the effect for consecutive scrolls in the same direction
-            // The multiplier increases with each scroll in the same direction
-            // Use a more gradual acceleration curve
-            velocity_factor = (15.0 + (fabs(current_velocity) / 5.0)) * scroll_sensitivity;
+            // Apply the multiplier only for consecutive scrolls
+            velocity_factor = (30.0 + (fabs(current_velocity) / 3.0)) * 
+                             (scroll_sensitivity / sensitivity_divisor) * scroll_multiplier;
             
             if (debug_mode) {
-                printf("Consecutive scroll in same direction, velocity factor: %.2f\n", velocity_factor);
+                printf("Consecutive scroll in same direction, applying multiplier: %.2f, velocity factor: %.2f\n", 
+                       scroll_multiplier, velocity_factor);
             }
         } else if ((current_velocity > 0 && delta < 0) || (current_velocity < 0 && delta > 0)) {
             // Opposite direction - completely reset the gesture like we do at boundaries
@@ -109,7 +107,7 @@ void update_inertia(int delta) {
             }
             
             // End the current touch gesture
-            end_multitouch_gesture();
+            // end_multitouch_gesture();
             
             // Reset velocity completely
             current_velocity = 0.0;
@@ -117,8 +115,8 @@ void update_inertia(int delta) {
             // Set position to a small value in the new direction
             current_position = (delta > 0) ? 10.0 : -10.0;
             
-            // Use standard factor for the new direction
-            velocity_factor = 15.0 * scroll_sensitivity;
+            // Use standard factor for the new direction (without multiplier for first scroll)
+            velocity_factor = 15.0 * (scroll_sensitivity / sensitivity_divisor);
             
             // We've completed a direction change reset
             if (debug_mode) {
@@ -160,9 +158,15 @@ void update_inertia(int delta) {
         }
     }
     
-    // Update position - use a smaller factor for smoother initial movement
-    // Update position more gradually
-    current_position += (double)delta * 10.0 * scroll_sensitivity;
+    // Update position - use a larger factor for more responsive initial movement
+    // For initial scroll, don't apply multiplier
+    if (!inertia_active || ((current_velocity > 0 && delta < 0) || (current_velocity < 0 && delta > 0))) {
+        // Initial scroll or direction change - don't apply multiplier
+        current_position += (double)delta * 20.0 * (scroll_sensitivity / sensitivity_divisor);
+    } else {
+        // Consecutive scroll in same direction - apply multiplier
+        current_position += (double)delta * 20.0 * (scroll_sensitivity / sensitivity_divisor) * scroll_multiplier;
+    }
     
     if (debug_mode) {
         printf("Updated velocity: %.2f, position: %.2f\n", current_velocity, current_position);
@@ -184,7 +188,7 @@ void stop_inertia(void) {
     inertia_active = 0;
     last_time.tv_sec = 0;
     last_time.tv_usec = 0;
-    end_multitouch_gesture();  // End the touch gesture when inertia stops
+    // end_multitouch_gesture();  // End the touch gesture when inertia stops
 }
 
 // Check if inertia is currently active
@@ -201,7 +205,7 @@ void apply_mouse_friction(int movement_magnitude) {
     // Calculate friction factor based on movement magnitude
     // Make it much gentler - small movements = very small friction
     // Adjust friction based on sensitivity and scroll_friction
-    double friction_factor = (0.03 + (movement_magnitude * 0.0001)) * scroll_friction / sqrt(scroll_sensitivity);
+    double friction_factor = (0.01 + (movement_magnitude * 0.0001)) * scroll_friction / sqrt(scroll_sensitivity);
     
     // Cap the friction factor to a lower value
     // Adjust cap based on sensitivity and scroll_friction
@@ -219,7 +223,7 @@ void apply_mouse_friction(int movement_magnitude) {
     }
     
     // Only stop inertia if velocity becomes extremely small
-    if (fabs(current_velocity) < 0.05) {
+    if (fabs(current_velocity) < INERTIA_STOP_THRESHOLD) {
         if (debug_mode) {
             printf("Velocity too low (%.2f), stopping inertia\n", current_velocity);
         }
@@ -255,12 +259,12 @@ void process_inertia(void) {
     }
     
     // If the velocity is negligible, stop the inertia.
-    if (fabs(current_velocity) < 0.05) {
+    if (fabs(current_velocity) < INERTIA_STOP_THRESHOLD) {
         stop_inertia();
         return;
     }
     
-    // Emit a synthetic scroll event with the current velocity (rounded to the nearest integer).
+    // Emit a synthetic scroll event with the current velocity (rounded to the nearest non-zero integer).
     int event_val = (int)round(current_velocity);
     if (emit_scroll_event(event_val) < 0) {
         fprintf(stderr, "Failed to emit scroll event in inertia processing.\n");
@@ -283,7 +287,7 @@ void process_inertia_mt(void) {
     if (!inertia_active) {
         // End the touch gesture if we were previously active
         if (was_active) {
-            end_multitouch_gesture();
+            // end_multitouch_gesture();
             was_active = 0;
             frame_count = 0;
         }
@@ -306,8 +310,8 @@ void process_inertia_mt(void) {
                frame_count, current_velocity, current_position, dt);
     }
     
-    // Apply friction to velocity
-    const double friction = 0.8 * scroll_friction / sqrt(scroll_sensitivity);
+    // Apply friction to velocity - reduced to make scrolling last longer
+    const double friction = 0.6 * scroll_friction / sqrt(scroll_sensitivity);
     double old_velocity = current_velocity;
     current_velocity *= exp(-friction * dt);
     
@@ -316,8 +320,9 @@ void process_inertia_mt(void) {
                dt, friction, old_velocity, current_velocity);
     }
     
-    // Calculate position delta based on velocity
-    double position_delta = current_velocity * dt * 80.0 * scroll_sensitivity;
+    // Calculate position delta based on velocity - increased multiplier for better responsiveness
+    // Apply sensitivity_divisor to reduce sensitivity for touchpads
+    double position_delta = current_velocity * dt * 120.0 * (scroll_sensitivity / sensitivity_divisor);
     
     // Fix direction after boundary reset if needed
     if (boundary_reset_in_progress && post_boundary_frames > 15) {
@@ -368,7 +373,7 @@ void process_inertia_mt(void) {
     current_position += position_delta;
     
     // Stop inertia if velocity is too low
-    if (fabs(current_velocity) < 0.025) {
+    if (fabs(current_velocity) < INERTIA_STOP_THRESHOLD) {
         if (debug_mode) {
             printf("Velocity too low (%.2f), stopping inertia\n", current_velocity);
         }

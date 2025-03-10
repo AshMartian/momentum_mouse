@@ -46,8 +46,8 @@ static void detect_screen_size(void) {
     int screen = DefaultScreen(display);
     
     // Get the screen dimensions using basic Xlib functions
-    screen_width = DisplayWidth(display, screen);  // Smaller trackpad size than screen
-    screen_height = DisplayHeight(display, screen);
+    screen_width = DisplayWidth(display, screen) * 10;
+    screen_height = DisplayHeight(display, screen) * 10;
     
     XCloseDisplay(display);
     
@@ -230,7 +230,7 @@ static int handle_boundary_reset(int new_pos, int delta, int screen_size, int is
         post_boundary_frames = 0;
         
         // Check if velocity is still significant enough to continue scrolling
-        if (fabs(current_velocity) < 0.5) {
+        if (fabs(current_velocity) < INERTIA_STOP_THRESHOLD) {
             if (debug_mode) {
                 printf("BOUNDARY: Velocity too low after reset (%.2f), stopping inertia\n", current_velocity);
             }
