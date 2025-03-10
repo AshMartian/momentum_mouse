@@ -2,9 +2,14 @@
 
 ## Introduction
 
-momentum mouse brings smooth, natural scrolling to Linux desktop environments. It transforms the abrupt, jerky scrolling experience typical of mouse wheels into a fluid, momentum-based scrolling experience similar to what you'd find on modern trackpads and touchscreens.
-
-![Icon](debian/icons/momentum_mouse.png)
+<div style="display: flex; align-items: center;">
+  <img src="debian/icons/momentum_mouse.png" alt="Icon" width="100" style="margin-right: 20px;">
+  <p>
+    <strong>Momentum Mouse</strong> brings smooth, natural scrolling to Linux desktop environments. 
+    It transforms the abrupt, jerky scrolling experience typical of mouse wheels into a fluid, 
+    momentum-based scrolling experience similar to what you'd find on modern trackpads and touchscreens.
+  </p>
+</div>
 
 ## The Problem
 
@@ -53,10 +58,10 @@ Instead of content jumping in fixed increments, it glides naturally with momentu
 
 ```bash
 # Download the latest .deb package
-wget https://github.com/AshMartian/momentum_mouse/releases/latest/download/momentum-mouse_0.3.0_amd64.deb
+wget https://github.com/AshMartian/momentum_mouse/releases/latest/download/momentum-mouse_0.4.0_amd64.deb
 
 # Install the package
-sudo dpkg -i momentum-mouse_0.3.0_amd64.deb
+sudo dpkg -i momentum-mouse_0.4.0_amd64.deb
 
 # Install dependencies if needed
 sudo apt-get install -f
@@ -89,13 +94,17 @@ sudo systemctl start momentum_mouse.service
 
 ## Configuration
 
-momentum mouse can be configured through:
-
-1. Command-line arguments
-2. Configuration files at `/etc/momentum_mouse.conf` (system-wide)
-3. Via the GUI! Installed as "momentum mouse Settings"
-
-![Settings Window](docs/gui-v0.3.0.png)
+<div style="display: flex; align-items: center;">
+  <img src="docs/gui-v0.4.0.png" alt="Settings Window" width="250" style="margin-right: 20px;">
+  <div>
+    <p><strong>Momentum Mouse</strong> can be configured through:</p>
+    <ol>
+      <li>Command-line arguments</li>
+      <li>Configuration files at <code>/etc/momentum_mouse.conf</code> (system-wide)</li>
+      <li>Via the GUI! Installed as <strong>"Momentum Mouse"</strong></li>
+    </ol>
+  </div>
+</div>
 
 ### Configuration File Reference
 
