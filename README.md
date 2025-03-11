@@ -58,7 +58,7 @@ Instead of content jumping in fixed increments, it glides naturally with momentu
 
 ```bash
 # Download the latest .deb package
-wget https://github.com/AshMartian/momentum_mouse/releases/latest/download/momentum-mouse_0.4.0_amd64.deb
+wget https://github.com/AshMartian/Momentum-Mouse/releases/latest/download/momentum-mouse_0.4.0_amd64.deb
 
 # Install the package
 sudo dpkg -i momentum-mouse_0.4.0_amd64.deb
@@ -74,7 +74,7 @@ sudo apt-get install -f
 ```bash
 
 # Clone the repository
-git clone https://github.com/AshMartian/momentum_mouse.git
+git clone https://github.com/AshMartian/Momentum-Mouse.git
 cd momentum-mouse
 
 # Install dependencies
