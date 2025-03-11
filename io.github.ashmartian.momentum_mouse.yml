@@ -1,0 +1,30 @@
+app-id: io.github.ashmartian.momentum_mouse
+runtime: org.gnome.Platform
+runtime-version: "45"
+sdk: org.gnome.Sdk
+command: momentum-mouse
+finish-args:
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --device=all
+  - --filesystem=host
+  - --talk-name=org.gnome.Settings
+  - --system-talk-name=org.freedesktop.UPower
+  - --talk-name=org.freedesktop.DBus
+  - --system-talk-name=org.freedesktop.login1
+
+modules:
+  - name: momentum-mouse
+    buildsystem: simple
+    build-commands:
+      - mkdir -p ${FLATPAK_DEST}/bin
+      - mkdir -p ${FLATPAK_DEST}/share/applications
+      - mkdir -p ${FLATPAK_DEST}/share/icons/hicolor/scalable/apps
+      - install -m 755 momentum_mouse ${FLATPAK_DEST}/bin/
+      - install -m 755 gui/momentum_mouse_gui ${FLATPAK_DEST}/bin/
+      - install -m 644 io.github.ashmartian.momentum_mouse.desktop ${FLATPAK_DEST}/share/applications/
+      - install -m 644 debian/icons/momentum_mouse.png ${FLATPAK_DEST}/share/icons/hicolor/scalable/apps/io.github.ashmartian.momentum_mouse.png
+    sources:
+      - type: dir
+        path: .

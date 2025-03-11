@@ -1,0 +1,49 @@
+name: Flatpak Build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+
+jobs:
+  flatpak:
+    name: "Flatpak"
+    runs-on: ubuntu-latest
+    container:
+      image: bilelmoussaoui/flatpak-github-actions:gnome-45
+      options: --privileged
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install dependencies
+        run: |
+          dnf -y install gcc make libevdev-devel gtk3-devel
+
+      - name: Build the project
+        run: |
+          make
+          cd gui && make
+
+      - name: Build Flatpak
+        uses: bilelmoussaoui/flatpak-github-actions/flatpak-builder@v6
+        with:
+          bundle: momentum-mouse.flatpak
+          manifest-path: io.github.ashmartian.momentum_mouse.yml
+          cache-key: flatpak-builder-${{ github.sha }}
+
+      - name: Upload Flatpak bundle
+        uses: actions/upload-artifact@v3
+        with:
+          name: Flatpak Bundle
+          path: momentum-mouse.flatpak
+
+      # Only deploy on tag pushes
+      - name: Deploy to Flathub
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: bilelmoussaoui/flatpak-github-actions/flat-manager@v6
+        with:
+          repository: flathub
+          flat-manager-url: https://flathub.org/repo
+          token: ${{ secrets.FLATHUB_TOKEN }}
