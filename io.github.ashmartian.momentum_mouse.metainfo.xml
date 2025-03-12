@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.ashmartian.momentum_mouse</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <name>Momentum Mouse</name>
+  <summary>Smooth, natural scrolling for Linux</summary>
+
+  <description>
+    <p>
+      Momentum Mouse brings smooth, natural scrolling to Linux desktop environments.
+      It transforms the abrupt, jerky scrolling experience typical of mouse wheels
+      into a fluid, momentum-based scrolling experience similar to modern trackpads.
+    </p>
+    <p>
+      Configure settings via the GUI app or manually through command-line arguments
+      or the config file at <code>/etc/momentum_mouse.conf</code>.
+    </p>
+  </description>
+
+  <developer_name>Ash Martian</developer_name>
+  <url type="homepage">https://github.com/AshMartian/momentum_mouse</url>
+  <url type="bugtracker">https://github.com/AshMartian/momentum_mouse/issues</url>
+  <url type="help">https://github.com/AshMartian/momentum_mouse/wiki</url>
+  
+  <screenshots>
+    <screenshot type="default">
+      <image>https://raw.githubusercontent.com/AshMartian/momentum_mouse/main/docs/gui-v0.4.0.png</image>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/AshMartian/momentum_mouse/main/docs/smooth-scrolling-example.png</image>
+    </screenshot>
+  </screenshots>
+
+  <provides>
+    <binary>momentum-mouse</binary>
+    <binary>momentum-mouse-gui</binary>
+  </provides>
+
+  <releases>
+    <release version="0.4.0" date="2025-03-09">
+      <description>
+        <p>Initial Flatpak release with GUI-based settings and smooth scrolling improvements.</p>
+      </description>
+    </release>
+  </releases>
+
+  <categories>
+    <category>Utility</category>
+    <category>Settings</category>
+  </categories>
+
+  <launchable type="desktop-id">io.github.ashmartian.momentum_mouse.desktop</launchable>
+
+  <content_rating type="oars-1.0">
+    <content_attribute id="violence-cartoon">none</content_attribute>
+    <content_attribute id="violence-fantasy">none</content_attribute>
+    <content_attribute id="violence-realistic">none</content_attribute>
+    <content_attribute id="violence-bloodshed">none</content_attribute>
+    <content_attribute id="language-used">none</content_attribute>
+  </content_rating>
+
+</component>

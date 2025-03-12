@@ -24,6 +24,7 @@ modules:
       - install -m 755 momentum_mouse ${FLATPAK_DEST}/bin/
       - install -m 755 gui/momentum_mouse_gui ${FLATPAK_DEST}/bin/
       - install -m 644 io.github.ashmartian.momentum_mouse.desktop ${FLATPAK_DEST}/share/applications/
+      - install -m 644 io.github.ashmartian.momentum_mouse.metainfo.xml ${FLATPAK_DEST}/share/metainfo/
       - install -m 644 debian/icons/momentum_mouse.png ${FLATPAK_DEST}/share/icons/hicolor/scalable/apps/io.github.ashmartian.momentum_mouse.png
     sources:
       - type: dir

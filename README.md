@@ -78,7 +78,7 @@ git clone https://github.com/AshMartian/momentum_mouse.git
 cd momentum-mouse
 
 # Install dependencies
-./setup.sh
+sudo ./setup.sh
 
 # Build the project
 make
