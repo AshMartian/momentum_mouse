@@ -19,8 +19,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          dnf -y install gcc make libevdev-devel gtk3-devel
-          ./setup.sh
+          dnf -y install gcc make libevdev-devel gtk3-devel libx11-dev libgtk-3-dev
 
       - name: Build the project
         run: |
