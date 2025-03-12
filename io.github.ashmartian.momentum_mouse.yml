@@ -29,3 +29,86 @@ modules:
     sources:
       - type: dir
         path: .
+
+  - name: libevdev
+    buildsystem: meson
+    sources:
+      - type: archive
+        url: https://www.freedesktop.org/software/libevdev/libevdev-1.13.0.tar.xz
+        sha256: 6a1c703db2904c9fffd18e6de7460bb1e39e2abf16f80b315b8dbebc4b48741f
+
+  - name: libx11
+    buildsystem: meson
+    sources:
+      - type: archive
+        url: https://xorg.freedesktop.org/archive/individual/lib/libX11-1.8.7.tar.gz
+        sha256: bdf527ce128e6718125ccf237ef47c9bd1a76db1f7f0af19a03c8a4763a09393
+
+  - name: gtk3
+    buildsystem: meson
+    sources:
+      - type: archive
+        url: https://download.gnome.org/sources/gtk+/3.24/gtk+-3.24.38.tar.xz
+        sha256: a129d51f32cb497894c4c4743f2b39a62314eb37b1f60ef9d9935e39c678b3df
+
+  - name: systemd
+    buildsystem: meson
+    config-opts:
+      - -Dlibidn=false
+      - -Dlibidn2=false
+      - -Dlibiptc=false
+      - -Dlibcryptsetup=false
+      - -Dlibssl=false
+      - -Dlibmicrohttpd=false
+      - -Dlibcurl=false
+      - -Dlibgcrypt=false
+      - -Dlibqrencode=false
+      - -Dlibaudit=false
+      - -Dlibacl=false
+      - -Dlibcap=false
+      - -Dlibseccomp=false
+      - -Dlibpam=false
+      - -Dlibselinux=false
+      - -Dlibapparmor=false
+      - -Dlibsmack=false
+      - -Dlibxkbcommon=false
+      - -Dlibidn=false
+      - -Dlibidn2=false
+      - -Dlibiptc=false
+      - -Dlibcryptsetup=false
+      - -Dlibssl=false
+      - -Dlibmicrohttpd=false
+      - -Dlibcurl=false
+      - -Dlibgcrypt=false
+      - -Dlibqrencode=false
+      - -Dlibaudit=false
+      - -Dlibacl=false
+      - -Dlibcap=false
+      - -Dlibseccomp=false
+      - -Dlibpam=false
+      - -Dlibselinux=false
+      - -Dlibapparmor=false
+      - -Dlibsmack=false
+      - -Dlibxkbcommon=false
+      - -Dlibidn=false
+      - -Dlibidn2=false
+      - -Dlibiptc=false
+      - -Dlibcryptsetup=false
+      - -Dlibssl=false
+      - -Dlibmicrohttpd=false
+      - -Dlibcurl=false
+      - -Dlibgcrypt=false
+      - -Dlibqrencode=false
+      - -Dlibaudit=false
+      - -Dlibacl=false
+      - -Dlibcap=false
+      - -Dlibseccomp=false
+      - -Dlibpam=false
+      - -Dlibselinux=false
+      - -Dlibapparmor=false
+      - -Dlibsmack=false
+      - -Dlibxkbcommon=false
+    sources:
+      - type: archive
+        url: https://github.com/systemd/systemd/archive/refs/tags/v249.tar.gz
+        sha256: 4e3f2f3d4e2f9a6e8f3f2e4e2f9a6e8f3f2e4e2f9a6e8f3f2e4e2f9a6e8f3f2e
