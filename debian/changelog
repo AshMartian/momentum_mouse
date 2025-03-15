@@ -1,3 +1,14 @@
+momentum-mouse (0.5.0) unstable; urgency=medium
+
+  * New setting for virtual trackpad resolution
+  * New setting for refresh rate
+  * GUI now runs as root to avoid asking for password each settings change
+  * GUI for selecting a mouse device
+  * GUI Sliders for resolution and refresh rate settings
+  * GUI Visual feedback on successful applied settings
+
+ -- Ash Martian <dev@ashmartian.com> Sat, 15 Mar 2025 15:00 +0000
+
 momentum-mouse (0.4.0) unstable; urgency=medium
 
   * Rebrand to Momentum mouse
@@ -5,7 +16,7 @@ momentum-mouse (0.4.0) unstable; urgency=medium
   * Adjusted GUI limits
   * Tuned physics, less sensitive by default
 
- -- Ash Martian <dev@ashmartian.com>  Mon, 09 Mar 2024 12:00:00 +0000
+ -- Ash Martian <dev@ashmartian.com>  Mon, 09 Mar 2025 12:00:00 +0000
 
 momentum-mouse (0.3.0) unstable; urgency=medium
 
@@ -13,17 +24,17 @@ momentum-mouse (0.3.0) unstable; urgency=medium
   * GUI now updates system config directly with admin privileges
   * Removed complex user config detection logic
 
- -- Ash Martian <dev@ashmartian.com>  Mon, 09 Mar 2024 12:00:00 +0000
+ -- Ash Martian <dev@ashmartian.com>  Mon, 09 Mar 2025 12:00:00 +0000
 
 momentum-mouse (0.1.2) unstable; urgency=medium
 
   * Increased default friction to 2.0 for better scrolling control
   * Initial release
 
- -- Ash Martian <dev@ashmartian.com>  Sat, 08 Mar 2024 23:00:00 +0000
+ -- Ash Martian <dev@ashmartian.com>  Sat, 08 Mar 2025 23:00:00 +0000
 
 momentum-mouse (0.1.1) unstable; urgency=medium                                                                                   
                                                                                                                                      
   * Initial release.                                                                                                                
                                                                                                                                      
- -- Ash Martian <dev@ashmartian.com>  Sat, 08 Mar 2024 20:00:00 +0000
+ -- Ash Martian <dev@ashmartian.com>  Sat, 08 Mar 2025 20:00:00 +0000

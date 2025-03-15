@@ -3,6 +3,7 @@
 
 // Include the input_event struct definition
 #include <linux/input.h>
+#include <linux/limits.h>
 
 // Scroll direction enum
 typedef enum {
@@ -15,6 +16,13 @@ typedef enum {
     SCROLL_AXIS_VERTICAL = 0,   // Standard vertical scrolling
     SCROLL_AXIS_HORIZONTAL = 1  // Horizontal scrolling
 } ScrollAxis;
+
+// Structure to represent an input device
+typedef struct {
+    char path[PATH_MAX];     // Device path (e.g., /dev/input/event7)
+    char name[256];          // Device name (e.g., BY Tech Gaming Keyboard Mouse)
+    int is_mouse;            // Whether this device is likely a mouse
+} InputDevice;
 
 // Global configuration variables
 extern int grab_device;  // Whether to grab the device exclusively
@@ -31,6 +39,9 @@ extern double current_velocity;    // Current scrolling velocity
 extern double current_position;    // Current scrolling position
 extern double max_velocity_factor; // Maximum velocity as a factor of screen dimensions
 extern double sensitivity_divisor; // Divisor for sensitivity when using touchpad
+extern double resolution_multiplier; // Multiplier for virtual trackpad resolution
+extern int refresh_rate; // Refresh rate in Hz for inertia updates
+extern char *device_override;      // Device path override
 // Constant for inertia stop threshold
 #define INERTIA_STOP_THRESHOLD 0.5  // Velocity threshold below which inertia stops
 
@@ -80,5 +91,10 @@ void load_config_file(const char *filename);
 
 // Debug logging
 void debug_log(const char *format, ...);
+
+// Device scanning functions
+int list_input_devices(InputDevice **devices);
+void free_input_devices(InputDevice *devices, int count);
+char* find_device_by_name(const char *device_name);
 
 #endif

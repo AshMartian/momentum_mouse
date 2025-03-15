@@ -10,3 +10,4 @@ momentum_mouse_gui
 debian/momentum-mouse
 debian/momentum_mouse_gui
 debian/files
+.flatpak-builder

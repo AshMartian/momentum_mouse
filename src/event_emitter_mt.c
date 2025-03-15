@@ -45,14 +45,15 @@ static void detect_screen_size(void) {
     
     int screen = DefaultScreen(display);
     
-    // Get the screen dimensions using basic Xlib functions
-    screen_width = DisplayWidth(display, screen) * 10;
-    screen_height = DisplayHeight(display, screen) * 10;
+    // Get the screen dimensions using basic Xlib functions and apply resolution multiplier
+    screen_width = DisplayWidth(display, screen) * resolution_multiplier;
+    screen_height = DisplayHeight(display, screen) * resolution_multiplier;
     
     XCloseDisplay(display);
     
     if (debug_mode) {
-        printf("Detected screen size: %dx%d\n", screen_width, screen_height);
+        printf("Detected screen size: %dx%d (with resolution multiplier %.2f)\n", 
+               screen_width, screen_height, resolution_multiplier);
     }
 }
 

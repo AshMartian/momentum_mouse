@@ -2,7 +2,7 @@ CC = gcc
 CFLAGS = -Wall -Wextra -O2
 LDFLAGS = -levdev -ludev -lm -lX11
 
-SRCS = src/momentum_mouse.c src/input_capture.c src/event_emitter.c src/event_emitter_mt.c src/inertia_logic.c src/system_settings.c src/config_reader.c
+SRCS = src/momentum_mouse.c src/input_capture.c src/event_emitter.c src/event_emitter_mt.c src/inertia_logic.c src/system_settings.c src/config_reader.c src/device_scanner.c
 OBJS = $(SRCS:.c=.o)
 TARGET = momentum_mouse
 
@@ -26,6 +26,8 @@ install: $(TARGET)
 	install -m 644 conf/momentum_mouse.conf.example $(DESTDIR)$(sysconfdir)/momentum_mouse.conf
 	install -d $(DESTDIR)$(systemddir)
 	install -m 644 debian/momentum_mouse.service $(DESTDIR)$(systemddir)/momentum_mouse.service
+	install -d $(DESTDIR)/usr/share/polkit-1/actions/
+	install -m 644 gui/org.momentum_mouse.gui.policy $(DESTDIR)/usr/share/polkit-1/actions/
 
 uninstall:
 	rm -f $(DESTDIR)$(bindir)/$(TARGET)

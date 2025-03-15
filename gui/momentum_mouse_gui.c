@@ -5,6 +5,18 @@
 #include <glib/gstdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <linux/input.h>
+#include "../include/momentum_mouse.h"
+
+// Stub implementation of debug_log for the GUI
+void debug_log(const char *format, ...) {
+    // In GUI mode, we don't need debug logs from the device scanner
+    // This is just a stub to satisfy the linker
+    (void)format; // Suppress unused parameter warning
+}
 
 #define CONFIG_GROUP "smooth_scroll"
 
@@ -20,7 +32,7 @@
 
 // Function declarations
 static GKeyFile* load_config(void);
-static void save_config(GKeyFile *key_file);
+static void save_config(GKeyFile *key_file, GtkWidget *parent);
 static gboolean detect_gnome_natural_scrolling(void);
 static void set_gnome_natural_scrolling(gboolean natural);
 
@@ -86,6 +98,7 @@ static void on_apply_clicked(GtkWidget *widget, gpointer data) {
     GtkWidget *vel_scale = widgets[3];
     GtkWidget *natural_switch = widgets[4];
     GtkWidget *grab_switch = widgets[5];
+    GtkWidget *device_combo = widgets[6];  // New device combo box
 
     gdouble sensitivity = gtk_range_get_value(GTK_RANGE(sens_scale));
     gdouble multiplier = gtk_range_get_value(GTK_RANGE(mult_scale));
@@ -93,7 +106,12 @@ static void on_apply_clicked(GtkWidget *widget, gpointer data) {
     gdouble max_velocity = gtk_range_get_value(GTK_RANGE(vel_scale));
     gboolean natural = gtk_switch_get_active(GTK_SWITCH(natural_switch));
     gboolean grab = gtk_switch_get_active(GTK_SWITCH(grab_switch));
+    gdouble resolution_mult = gtk_range_get_value(GTK_RANGE(widgets[7]));
+    gint refresh_rate_val = (gint)gtk_range_get_value(GTK_RANGE(widgets[8]));
 
+    // Get the selected device
+    gchar *selected_device = gtk_combo_box_text_get_active_text(GTK_COMBO_BOX_TEXT(device_combo));
+    
     // Load existing config, update values, and save.
     GKeyFile *config = load_config();
     g_key_file_set_double(config, CONFIG_GROUP, "sensitivity", sensitivity);
@@ -102,10 +120,37 @@ static void on_apply_clicked(GtkWidget *widget, gpointer data) {
     g_key_file_set_double(config, CONFIG_GROUP, "max_velocity", max_velocity);
     g_key_file_set_boolean(config, CONFIG_GROUP, "natural", natural);
     g_key_file_set_boolean(config, CONFIG_GROUP, "grab", grab);
+    g_key_file_set_double(config, CONFIG_GROUP, "resolution_multiplier", resolution_mult);
+    g_key_file_set_integer(config, CONFIG_GROUP, "refresh_rate", refresh_rate_val);
+    
+    // Handle device selection
+    if (selected_device && strcmp(selected_device, "Auto-detect (recommended)") != 0 && 
+        strcmp(selected_device, "No devices found") != 0) {
+        // Extract the device name from the combo box text (format: "Name (path)")
+        gchar *device_name = g_strdup(selected_device);
+        gchar *paren = strrchr(device_name, '(');
+        if (paren) {
+            *(paren - 1) = '\0';  // Cut off at the space before the parenthesis
+            g_key_file_set_string(config, CONFIG_GROUP, "device_name", device_name);
+        }
+        g_free(device_name);
+    } else {
+        // Remove the device_name key if auto-detect is selected
+        g_key_file_remove_key(config, CONFIG_GROUP, "device_name", NULL);
+    }
+    
+    g_free(selected_device);
     
     // Optionally update the GNOME setting
     set_gnome_natural_scrolling(natural);
-    save_config(config);
+    
+    // Get the parent window for the notification
+    GtkWidget *parent_window = gtk_widget_get_toplevel(widget);
+    if (!gtk_widget_is_toplevel(parent_window)) {
+        parent_window = NULL;
+    }
+    
+    save_config(config, parent_window);
     g_key_file_free(config);
 }
 
@@ -121,44 +166,74 @@ static GKeyFile* load_config(void) {
 }
 
 
+// Callback function for auto-closing dialog
+static gboolean auto_close_dialog(gpointer data) {
+    GtkWidget *dialog = GTK_WIDGET(data);
+    gtk_widget_destroy(dialog);
+    return FALSE; // Don't repeat the timeout
+}
+
+// Function to show a success notification
+static void show_success_notification(GtkWindow *parent_window) {
+    // Create a dialog with a success message
+    GtkWidget *dialog = gtk_message_dialog_new(
+        parent_window,
+        GTK_DIALOG_MODAL | GTK_DIALOG_DESTROY_WITH_PARENT,
+        GTK_MESSAGE_INFO,
+        GTK_BUTTONS_NONE,
+        "Settings saved successfully!");
+    
+    // Add a subtitle with more details
+    gtk_message_dialog_format_secondary_text(
+        GTK_MESSAGE_DIALOG(dialog),
+        "The momentum mouse service has been restarted with your new settings.");
+    
+    // Set up a timer to auto-close the dialog after 2 seconds
+    g_timeout_add(2000, auto_close_dialog, dialog);
+    
+    // Show the dialog
+    gtk_widget_show_all(dialog);
+}
+
 // Save settings from key_file back to disk.
-static void save_config(GKeyFile *key_file) {
+static void save_config(GKeyFile *key_file, GtkWidget *parent) {
     GError *error = NULL;
     gchar *data = g_key_file_to_data(key_file, NULL, &error);
     if (error) {
-        g_printerr("Error converting config to  %s\n", error->message);
+        g_printerr("Error converting config to data: %s\n", error->message);
         g_error_free(error);
         return;
     }
     
-    // Create a temporary file
-    gchar *temp_file = g_build_filename(g_get_tmp_dir(), "momentum_mouse.conf.tmp", NULL);
-    if (!g_file_set_contents(temp_file, data, -1, &error)) {
-        g_printerr("Error creating temporary config file: %s\n", error->message);
+    // Since we're running as root, we can directly write to the system config file
+    if (!g_file_set_contents(SYSTEM_CONFIG_FILE, data, -1, &error)) {
+        g_printerr("Error writing config file: %s\n", error->message);
         g_error_free(error);
-        g_free(temp_file);
         g_free(data);
         return;
     }
     
-    // Use pkexec to copy the file to /etc with root permissions AND restart the service in one command
-    gchar *command = g_strdup_printf("pkexec sh -c 'cp %s %s && systemctl restart momentum_mouse.service'", 
-                                     temp_file, SYSTEM_CONFIG_FILE);
+    // Directly restart the service (we're already root)
     gint exit_status;
-    if (!g_spawn_command_line_sync(command, NULL, NULL, &exit_status, &error)) {
-        g_printerr("Error executing pkexec: %s\n", error->message);
+    if (!g_spawn_command_line_sync("systemctl restart momentum_mouse.service", 
+                                  NULL, NULL, &exit_status, &error)) {
+        g_printerr("Error restarting service: %s\n", error->message);
         g_error_free(error);
+        g_free(data);
+        return;
     } else if (exit_status != 0) {
-        g_printerr("pkexec command failed with exit status %d\n", exit_status);
+        g_printerr("Service restart command failed with exit status %d\n", exit_status);
+        g_free(data);
+        return;
     }
     
-    // Clean up
-    g_free(command);
-    g_unlink(temp_file);  // Delete the temporary file
-    g_free(temp_file);
     g_free(data);
-    
     g_print("Settings saved and service restarted.\n");
+    
+    // Show a success notification
+    if (parent && GTK_IS_WINDOW(parent)) {
+        show_success_notification(GTK_WINDOW(parent));
+    }
 }
 
 int main(int argc, char *argv[]) {
@@ -238,7 +313,108 @@ int main(int argc, char *argv[]) {
     gtk_grid_set_row_spacing(GTK_GRID(grid), 10);
     gtk_grid_set_column_spacing(GTK_GRID(grid), 10);
     gtk_box_pack_start(GTK_BOX(main_box), grid, TRUE, TRUE, 0);
+    
+    // Create a combo box for device selection
+    GtkWidget *device_label = gtk_label_new("Input Device:");
+    gtk_widget_set_halign(device_label, GTK_ALIGN_END);
+    GtkWidget *device_combo = gtk_combo_box_text_new();
+    gtk_widget_set_hexpand(device_combo, TRUE);
+    gtk_widget_set_halign(device_combo, GTK_ALIGN_FILL);
+    gtk_widget_set_tooltip_text(device_combo, 
+        "Select the mouse or input device to use for smooth scrolling.");
 
+    // Populate the combo box with available devices
+    InputDevice *devices;
+    int device_count = list_input_devices(&devices);
+    if (device_count > 0) {
+        // Add a "Auto-detect" option first
+        gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(device_combo), "Auto-detect (recommended)");
+        
+        // Add all mouse devices
+        for (int i = 0; i < device_count; i++) {
+            // Skip the momentum mouse Trackpad
+            if (devices[i].is_mouse && strstr(devices[i].name, "momentum mouse Trackpad") == NULL) {
+                char device_entry[PATH_MAX + 256 + 4]; // Size to fit name (256) + path (PATH_MAX) + " ()" + null terminator
+                snprintf(device_entry, sizeof(device_entry), "%s (%s)", 
+                         devices[i].name, devices[i].path);
+                gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(device_combo), device_entry);
+            }
+        }
+        
+        // Add all other devices
+        for (int i = 0; i < device_count; i++) {
+            // Skip the momentum mouse Trackpad
+            if (!devices[i].is_mouse && strstr(devices[i].name, "momentum mouse Trackpad") == NULL) {
+                char device_entry[PATH_MAX + 256 + 4]; // Size to fit name (256) + path (PATH_MAX) + " ()" + null terminator
+                snprintf(device_entry, sizeof(device_entry), "%s (%s)", 
+                         devices[i].name, devices[i].path);
+                gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(device_combo), device_entry);
+            }
+        }
+        
+        // Set active item based on config
+        gchar *device_name = g_key_file_get_string(config, CONFIG_GROUP, "device_name", NULL);
+        if (device_name) {
+            // Try to find and select the device in the combo box
+            int found = 0;
+            for (int i = 0; i < device_count; i++) {
+                // Skip the momentum mouse Trackpad
+                if (strstr(devices[i].name, "momentum mouse Trackpad") != NULL) {
+                    continue;
+                }
+                
+                // Check if the device name starts with the configured name
+                // This handles cases where the stored name is truncated
+                if (strncmp(devices[i].name, device_name, strlen(device_name)) == 0) {
+                    // +1 because index 0 is "Auto-detect"
+                    int index = 1;
+                    // Count how many devices we've added to the combo box before this one
+                    for (int j = 0; j < i; j++) {
+                        if ((devices[j].is_mouse == devices[i].is_mouse) && 
+                            strstr(devices[j].name, "momentum mouse Trackpad") == NULL) {
+                            index++;
+                        }
+                    }
+                    
+                    // If this is not a mouse, add the count of all mice
+                    if (!devices[i].is_mouse) {
+                        for (int j = 0; j < device_count; j++) {
+                            if (devices[j].is_mouse && 
+                                strstr(devices[j].name, "momentum mouse Trackpad") == NULL) {
+                                index++;
+                            }
+                        }
+                    }
+                    
+                    gtk_combo_box_set_active(GTK_COMBO_BOX(device_combo), index);
+                    found = 1;
+                    break;
+                }
+            }
+            
+            if (!found) {
+                // Default to auto-detect
+                gtk_combo_box_set_active(GTK_COMBO_BOX(device_combo), 0);
+            }
+            
+            g_free(device_name);
+        } else {
+            // Default to auto-detect
+            gtk_combo_box_set_active(GTK_COMBO_BOX(device_combo), 0);
+        }
+        
+        free_input_devices(devices, device_count);
+    } else {
+        // If no devices found, just add a placeholder
+        gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(device_combo), "No devices found");
+        gtk_combo_box_set_active(GTK_COMBO_BOX(device_combo), 0);
+        gtk_widget_set_sensitive(device_combo, FALSE);
+    }
+
+    // Add the device selection to the grid
+    gtk_grid_attach(GTK_GRID(grid), device_label, 0, 0, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), device_combo, 1, 0, 1, 1);
+    
     // Sensitivity slider
     GtkWidget *sens_label = gtk_label_new("Sensitivity:");
     gtk_widget_set_halign(sens_label, GTK_ALIGN_END);
@@ -248,8 +424,8 @@ int main(int argc, char *argv[]) {
     gtk_widget_set_halign(sens_scale, GTK_ALIGN_FILL);
     gtk_widget_set_tooltip_text(sens_scale, 
         "The strength of each mouse scroll wheel turn. Higher values make each scroll input have more effect on velocity.");
-    gtk_grid_attach(GTK_GRID(grid), sens_label, 0, 0, 1, 1);
-    gtk_grid_attach(GTK_GRID(grid), sens_scale, 1, 0, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), sens_label, 0, 1, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), sens_scale, 1, 1, 1, 1);
 
     // Multiplier slider
     GtkWidget *mult_label = gtk_label_new("Multiplier:");
@@ -260,8 +436,8 @@ int main(int argc, char *argv[]) {
     gtk_widget_set_halign(mult_scale, GTK_ALIGN_FILL);
     gtk_widget_set_tooltip_text(mult_scale, 
         "The consecutive scroll multiplier. Higher values make repeated scrolling accelerate faster.");
-    gtk_grid_attach(GTK_GRID(grid), mult_label, 0, 1, 1, 1);
-    gtk_grid_attach(GTK_GRID(grid), mult_scale, 1, 1, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), mult_label, 0, 2, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), mult_scale, 1, 2, 1, 1);
 
     // Friction slider
     GtkWidget *fric_label = gtk_label_new("Friction:");
@@ -272,8 +448,8 @@ int main(int argc, char *argv[]) {
     gtk_widget_set_halign(fric_scale, GTK_ALIGN_FILL);
     gtk_widget_set_tooltip_text(fric_scale, 
         "The rate at which scrolling slows down over time. Higher values make scrolling stop quicker, lower values make it glide longer.");
-    gtk_grid_attach(GTK_GRID(grid), fric_label, 0, 2, 1, 1);
-    gtk_grid_attach(GTK_GRID(grid), fric_scale, 1, 2, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), fric_label, 0, 3, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), fric_scale, 1, 3, 1, 1);
 
     // Max Velocity slider
     GtkWidget *vel_label = gtk_label_new("Max Velocity:");
@@ -284,8 +460,8 @@ int main(int argc, char *argv[]) {
     gtk_widget_set_halign(vel_scale, GTK_ALIGN_FILL);
     gtk_widget_set_tooltip_text(vel_scale, 
         "The maximum speed that inertia scrolling can reach. Limits how fast content can scroll.");
-    gtk_grid_attach(GTK_GRID(grid), vel_label, 0, 3, 1, 1);
-    gtk_grid_attach(GTK_GRID(grid), vel_scale, 1, 3, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), vel_label, 0, 4, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), vel_scale, 1, 4, 1, 1);
 
     // Natural scrolling switch
     GtkWidget *natural_label = gtk_label_new("Natural Scrolling:");
@@ -328,15 +504,44 @@ int main(int argc, char *argv[]) {
     gtk_grid_attach(GTK_GRID(grid), grab_label, 0, 6, 1, 1);
     gtk_grid_attach(GTK_GRID(grid), grab_switch, 1, 6, 1, 1);
 
+    // Resolution Multiplier slider
+    GtkWidget *res_label = gtk_label_new("Resolution Multiplier:");
+    gtk_widget_set_halign(res_label, GTK_ALIGN_END);
+    GtkWidget *res_scale = gtk_scale_new_with_range(GTK_ORIENTATION_HORIZONTAL, 0.5, 20.0, 0.5);
+    gdouble resolution_mult = g_key_file_get_double(config, CONFIG_GROUP, "resolution_multiplier", NULL);
+    if (resolution_mult == 0) resolution_mult = 10.0; // Default
+    gtk_range_set_value(GTK_RANGE(res_scale), resolution_mult);
+    gtk_widget_set_hexpand(res_scale, TRUE);
+    gtk_widget_set_halign(res_scale, GTK_ALIGN_FILL);
+    gtk_widget_set_tooltip_text(res_scale, 
+        "Multiplier for virtual trackpad resolution. Higher values increase precision but may cause issues.");
+    gtk_grid_attach(GTK_GRID(grid), res_label, 0, 7, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), res_scale, 1, 7, 1, 1);
+
+    // Refresh Rate slider
+    GtkWidget *rate_label = gtk_label_new("Refresh Rate (Hz):");
+    gtk_widget_set_halign(rate_label, GTK_ALIGN_END);
+    GtkWidget *rate_scale = gtk_scale_new_with_range(GTK_ORIENTATION_HORIZONTAL, 30, 500, 10);
+    gint refresh_rate_val = g_key_file_get_integer(config, CONFIG_GROUP, "refresh_rate", NULL);
+    if (refresh_rate_val == 0) refresh_rate_val = 200; // Default
+    gtk_range_set_value(GTK_RANGE(rate_scale), refresh_rate_val);
+    gtk_widget_set_hexpand(rate_scale, TRUE);
+    gtk_widget_set_halign(rate_scale, GTK_ALIGN_FILL);
+    gtk_widget_set_tooltip_text(rate_scale, 
+        "Refresh rate for inertia updates. Lower values reduce CPU usage but may feel less smooth.");
+    gtk_grid_attach(GTK_GRID(grid), rate_label, 0, 8, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), rate_scale, 1, 8, 1, 1);
+
     // Apply button
     GtkWidget *apply_button = gtk_button_new_with_label("Apply");
     gtk_widget_set_hexpand(apply_button, TRUE);
     gtk_widget_set_halign(apply_button, GTK_ALIGN_FILL);
-    gtk_grid_attach(GTK_GRID(grid), apply_button, 0, 7, 2, 1);
+    gtk_grid_attach(GTK_GRID(grid), apply_button, 0, 9, 2, 1);
     
     // Create an array of widget pointers to pass as data
     GtkWidget *widgets[] = {
-        sens_scale, mult_scale, fric_scale, vel_scale, natural_switch, grab_switch
+        sens_scale, mult_scale, fric_scale, vel_scale, natural_switch, grab_switch, device_combo,
+        res_scale, rate_scale
     };
     g_signal_connect(apply_button, "clicked", G_CALLBACK(on_apply_clicked), widgets);
 

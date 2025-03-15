@@ -64,10 +64,29 @@ void load_config_file(const char *filename) {
         char value[128] = {0};
         
         // Parse key=value format
-        if (sscanf(line, "%127[^=]=%127s", key, value) == 2) {
+        char *equals_pos = strchr(line, '=');
+        if (equals_pos) {
+            // Extract the key (everything before the equals sign)
+            size_t key_len = equals_pos - line;
+            if (key_len > sizeof(key) - 1) key_len = sizeof(key) - 1;
+            strncpy(key, line, key_len);
+            key[key_len] = '\0';
+            
             // Trim whitespace from key
             char *k = key;
             while (*k == ' ' || *k == '\t') k++;
+            
+            // Extract the value (everything after the equals sign)
+            equals_pos++; // Move past the equals sign
+            strncpy(value, equals_pos, sizeof(value) - 1);
+            value[sizeof(value) - 1] = '\0';
+            
+            // Trim trailing whitespace from value
+            size_t val_len = strlen(value);
+            while (val_len > 0 && (value[val_len-1] == ' ' || value[val_len-1] == '\t' || 
+                                   value[val_len-1] == '\n' || value[val_len-1] == '\r')) {
+                value[--val_len] = '\0';
+            }
             
             if (strcmp(k, "sensitivity") == 0) {
                 double val = atof(value);
@@ -164,6 +183,40 @@ void load_config_file(const char *filename) {
                     sensitivity_divisor = val;
                     if (debug_mode) {
                         printf("Config: sensitivity_divisor=%.2f\n", sensitivity_divisor);
+                    }
+                }
+            } else if (strcmp(k, "resolution_multiplier") == 0) {
+                double val = atof(value);
+                if (val > 0.0) {
+                    resolution_multiplier = val;
+                    if (debug_mode) {
+                        printf("Config: resolution_multiplier=%.2f\n", resolution_multiplier);
+                    }
+                }
+            } else if (strcmp(k, "refresh_rate") == 0) {
+                int val = atoi(value);
+                if (val > 0) {
+                    refresh_rate = val;
+                    if (debug_mode) {
+                        printf("Config: refresh_rate=%d\n", refresh_rate);
+                    }
+                }
+            } else if (strcmp(k, "device_name") == 0) {
+                // Store the device name
+                if (strlen(value) > 0) {
+                    // Find the device path by name
+                    char *path = find_device_by_name(value);
+                    if (path) {
+                        if (debug_mode) {
+                            printf("Config: device_name=%s (path=%s)\n", value, path);
+                        }
+                        // Store the device path in the global variable
+                        if (device_override == NULL) {
+                            device_override = strdup(path);
+                        }
+                        free(path);
+                    } else if (debug_mode) {
+                        printf("Config: device_name=%s (not found)\n", value);
                     }
                 }
             }

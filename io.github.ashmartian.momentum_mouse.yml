@@ -1,6 +1,6 @@
 app-id: io.github.ashmartian.momentum_mouse
 runtime: org.gnome.Platform
-runtime-version: "45"
+runtime-version: "46"
 sdk: org.gnome.Sdk
 command: momentum-mouse
 finish-args:
@@ -20,6 +20,7 @@ modules:
     build-commands:
       - mkdir -p ${FLATPAK_DEST}/bin
       - mkdir -p ${FLATPAK_DEST}/share/applications
+      - mkdir -p ${FLATPAK_DEST}/share/metainfo
       - mkdir -p ${FLATPAK_DEST}/share/icons/hicolor/scalable/apps
       - install -m 755 momentum_mouse ${FLATPAK_DEST}/bin/
       - install -m 755 gui/momentum_mouse_gui ${FLATPAK_DEST}/bin/
@@ -32,83 +33,36 @@ modules:
 
   - name: libevdev
     buildsystem: meson
+    config-opts:
+      - -Dtests=disabled
     sources:
       - type: archive
         url: https://www.freedesktop.org/software/libevdev/libevdev-1.13.0.tar.xz
-        sha256: 6a1c703db2904c9fffd18e6de7460bb1e39e2abf16f80b315b8dbebc4b48741f
+        sha256: 9edf2006cc86a5055279647c38ec923d11a821ee4dc2c3033e8d20e8ee237cd9
 
   - name: libx11
-    buildsystem: meson
+    buildsystem: autotools
+    config-opts:
+      - --disable-static
+      - --enable-malloc0returnsnull
     sources:
       - type: archive
         url: https://xorg.freedesktop.org/archive/individual/lib/libX11-1.8.7.tar.gz
-        sha256: bdf527ce128e6718125ccf237ef47c9bd1a76db1f7f0af19a03c8a4763a09393
+        sha256: 793ebebf569f12c864b77401798d38814b51790fce206e01a431e5feb982e20b
 
   - name: gtk3
     buildsystem: meson
     sources:
       - type: archive
         url: https://download.gnome.org/sources/gtk+/3.24/gtk+-3.24.38.tar.xz
-        sha256: a129d51f32cb497894c4c4743f2b39a62314eb37b1f60ef9d9935e39c678b3df
+        sha256: ce11decf018b25bdd8505544a4f87242854ec88be054d9ade5f3a20444dd8ee7
 
   - name: systemd
     buildsystem: meson
     config-opts:
-      - -Dlibidn=false
-      - -Dlibidn2=false
-      - -Dlibiptc=false
-      - -Dlibcryptsetup=false
-      - -Dlibssl=false
-      - -Dlibmicrohttpd=false
-      - -Dlibcurl=false
-      - -Dlibgcrypt=false
-      - -Dlibqrencode=false
-      - -Dlibaudit=false
-      - -Dlibacl=false
-      - -Dlibcap=false
-      - -Dlibseccomp=false
-      - -Dlibpam=false
-      - -Dlibselinux=false
-      - -Dlibapparmor=false
-      - -Dlibsmack=false
-      - -Dlibxkbcommon=false
-      - -Dlibidn=false
-      - -Dlibidn2=false
-      - -Dlibiptc=false
-      - -Dlibcryptsetup=false
-      - -Dlibssl=false
-      - -Dlibmicrohttpd=false
-      - -Dlibcurl=false
-      - -Dlibgcrypt=false
-      - -Dlibqrencode=false
-      - -Dlibaudit=false
-      - -Dlibacl=false
-      - -Dlibcap=false
-      - -Dlibseccomp=false
-      - -Dlibpam=false
-      - -Dlibselinux=false
-      - -Dlibapparmor=false
-      - -Dlibsmack=false
-      - -Dlibxkbcommon=false
-      - -Dlibidn=false
-      - -Dlibidn2=false
-      - -Dlibiptc=false
-      - -Dlibcryptsetup=false
-      - -Dlibssl=false
-      - -Dlibmicrohttpd=false
-      - -Dlibcurl=false
-      - -Dlibgcrypt=false
-      - -Dlibqrencode=false
-      - -Dlibaudit=false
-      - -Dlibacl=false
-      - -Dlibcap=false
-      - -Dlibseccomp=false
-      - -Dlibpam=false
-      - -Dlibselinux=false
-      - -Dlibapparmor=false
-      - -Dlibsmack=false
-      - -Dlibxkbcommon=false
+      - -Dlibudev=true # Enable only what you need
+      - -Dtests=false # Disable tests to speed up build
     sources:
       - type: archive
         url: https://github.com/systemd/systemd/archive/refs/tags/v249.tar.gz
-        sha256: 4e3f2f3d4e2f9a6e8f3f2e4e2f9a6e8f3f2e4e2f9a6e8f3f2e4e2f9a6e8f3f2e
+        sha256: 174091ce5f2c02123f76d546622b14078097af105870086d18d55c1c2667d855

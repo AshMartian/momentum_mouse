@@ -22,7 +22,10 @@ double scroll_multiplier = 1.0;   // Default multiplier
 double scroll_friction = 2.0;     // Default friction
 double max_velocity_factor = 0.8; // Default max velocity (80% of screen dimension)
 double sensitivity_divisor = 3; // Default sensitivity divisor
+double resolution_multiplier = 10.0; // Default resolution multiplier
+int refresh_rate = 200; // Default refresh rate (200 Hz)
 const char *config_file_override = NULL;  // Config file override path
+char *device_override = NULL;  // Device path override
 
 // Implementation of debug_log function
 void debug_log(const char *format, ...) {
@@ -47,7 +50,7 @@ void debug_log(const char *format, ...) {
 
 int main(int argc, char *argv[]) {
     // Parse command line arguments first to get any config override and debug settings
-    const char *device_override = NULL;
+    char *local_device_override = NULL;
     
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
@@ -70,6 +73,10 @@ int main(int argc, char *argv[]) {
             printf("                              Higher values allow faster scrolling\n");
             printf("  --sensitivity-divisor=VALUE Set divisor for touchpad sensitivity (default: 2.5)\n");
             printf("                              Higher values reduce sensitivity for touchpads\n");
+            printf("  --resolution-multiplier=VALUE Set resolution multiplier for virtual trackpad (default: 10.0)\n");
+            printf("                              Higher values increase precision but may cause issues\n");
+            printf("  --refresh-rate=VALUE         Set refresh rate in Hz for inertia updates (default: 200)\n");
+            printf("                              Lower values reduce CPU usage but may feel less smooth\n");
             printf("  --config=PATH               Use the specified config file\n");
             printf("  --daemon                    Run as a background daemon\n");
             printf("\n");
@@ -177,9 +184,31 @@ int main(int argc, char *argv[]) {
                 fprintf(stderr, "Invalid sensitivity divisor: %s\n", argv[i] + 22);
                 fprintf(stderr, "Using default sensitivity divisor: 1.0\n");
             }
+        } else if (strncmp(argv[i], "--resolution-multiplier=", 24) == 0) {
+            // Parse resolution multiplier
+            double value = atof(argv[i] + 24);
+            if (value > 0.0) {
+                resolution_multiplier = value;
+            } else {
+                fprintf(stderr, "Invalid resolution multiplier: %s\n", argv[i] + 24);
+                fprintf(stderr, "Using default resolution multiplier: 10.0\n");
+            }
+        } else if (strncmp(argv[i], "--refresh-rate=", 15) == 0) {
+            // Parse refresh rate
+            int value = atoi(argv[i] + 15);
+            if (value > 0) {
+                refresh_rate = value;
+            } else {
+                fprintf(stderr, "Invalid refresh rate: %s\n", argv[i] + 15);
+                fprintf(stderr, "Using default refresh rate: 200\n");
+            }
         } else if (argv[i][0] != '-') {
             // Assume this is the device path
-            device_override = argv[i];
+            if (local_device_override) {
+                free(local_device_override);
+            }
+            local_device_override = strdup(argv[i]);
+            device_override = local_device_override;
         } else {
             fprintf(stderr, "Unknown option: %s\n", argv[i]);
             fprintf(stderr, "Use --help for usage information\n");
@@ -239,7 +268,7 @@ int main(int argc, char *argv[]) {
         } else {
             process_inertia();
         }
-        usleep(5000);
+        usleep(1000000 / refresh_rate); // Convert Hz to microseconds
     }
     
     // Clean up resources
