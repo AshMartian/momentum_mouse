@@ -1,9 +1,0 @@
-[Desktop Entry]
-Name=Momentum Mouse
-Comment=Smooth scrolling for Linux
-Exec=momentum-mouse-gui
-Icon=io.github.ashmartian.momentum_mouse
-Terminal=false
-Type=Application
-Categories=Utility;GTK;
-StartupNotify=true

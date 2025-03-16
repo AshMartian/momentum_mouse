@@ -1,0 +1,72 @@
+name: momentum-mouse
+base: core20
+summary: Smooth inertial scrolling for Linux
+description: |
+  Adds macOS-like inertial scrolling behavior to Linux systems.
+  Provides smooth scrolling with momentum and natural deceleration
+  for a more intuitive scrolling experience. (Kinetic, physics-based)
+
+version: "0.5.0"
+grade: stable
+confinement: devmode
+
+apps:
+  momentum-mouse:
+    command: bin/momentum-mouse
+    daemon: simple
+    restart-condition: always
+    plugs:
+      - hardware-observe
+      - input-control
+      - x11
+      - wayland
+      - desktop
+      - home
+      - network-bind
+
+  momentum-mouse-gui:
+    command: bin/momentum_mouse_gui
+    desktop: usr/share/applications/momentum_mouse_gui.desktop
+    plugs:
+      - hardware-observe
+      - input-control
+      - x11
+      - wayland
+      - desktop
+      - desktop-legacy
+      - unity7
+      - home
+      - network-bind
+
+parts:
+  momentum-mouse:
+    plugin: make
+    source: .
+    build-packages:
+      - gcc
+      - make
+      - pkg-config
+      - libudev-dev
+      - libevdev-dev
+      - libx11-dev
+    stage-packages:
+      - libudev1
+      - libevdev2
+      - libx11-6
+
+  momentum-mouse-gui:
+    plugin: make
+    source: ./gui
+    build-packages:
+      - gcc
+      - make
+      - pkg-config
+      - libudev-dev
+      - libevdev-dev
+      - libx11-dev
+      - libgtk-3-dev
+    stage-packages:
+      - libudev1
+      - libevdev2
+      - libx11-6
+      - libgtk-3-0

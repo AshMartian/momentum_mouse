@@ -106,8 +106,9 @@ static void on_apply_clicked(GtkWidget *widget, gpointer data) {
     gdouble max_velocity = gtk_range_get_value(GTK_RANGE(vel_scale));
     gboolean natural = gtk_switch_get_active(GTK_SWITCH(natural_switch));
     gboolean grab = gtk_switch_get_active(GTK_SWITCH(grab_switch));
-    gdouble resolution_mult = gtk_range_get_value(GTK_RANGE(widgets[7]));
-    gint refresh_rate_val = (gint)gtk_range_get_value(GTK_RANGE(widgets[8]));
+    gboolean drag = gtk_switch_get_active(GTK_SWITCH(widgets[7]));
+    gdouble resolution_mult = gtk_range_get_value(GTK_RANGE(widgets[8]));
+    gint refresh_rate_val = (gint)gtk_range_get_value(GTK_RANGE(widgets[9]));
 
     // Get the selected device
     gchar *selected_device = gtk_combo_box_text_get_active_text(GTK_COMBO_BOX_TEXT(device_combo));
@@ -120,6 +121,7 @@ static void on_apply_clicked(GtkWidget *widget, gpointer data) {
     g_key_file_set_double(config, CONFIG_GROUP, "max_velocity", max_velocity);
     g_key_file_set_boolean(config, CONFIG_GROUP, "natural", natural);
     g_key_file_set_boolean(config, CONFIG_GROUP, "grab", grab);
+    g_key_file_set_boolean(config, CONFIG_GROUP, "mouse_move_drag", drag);
     g_key_file_set_double(config, CONFIG_GROUP, "resolution_multiplier", resolution_mult);
     g_key_file_set_integer(config, CONFIG_GROUP, "refresh_rate", refresh_rate_val);
     
@@ -503,6 +505,24 @@ int main(int argc, char *argv[]) {
         "When enabled, mouse input is captured exclusively for better performance, especially at low sensitivity.");
     gtk_grid_attach(GTK_GRID(grid), grab_label, 0, 6, 1, 1);
     gtk_grid_attach(GTK_GRID(grid), grab_switch, 1, 6, 1, 1);
+    
+    // Mouse Move Drag switch
+    GtkWidget *drag_label = gtk_label_new("Mouse Move Drag:");
+    gtk_widget_set_halign(drag_label, GTK_ALIGN_END);
+    GtkWidget *drag_switch = gtk_switch_new();
+
+    // Read mouse_move_drag setting from config
+    gboolean drag = TRUE; // Default to true
+    if (g_key_file_has_key(config, CONFIG_GROUP, "mouse_move_drag", NULL)) {
+        drag = g_key_file_get_boolean(config, CONFIG_GROUP, "mouse_move_drag", NULL);
+    }
+
+    gtk_switch_set_active(GTK_SWITCH(drag_switch), drag);
+    gtk_widget_set_halign(drag_switch, GTK_ALIGN_END);
+    gtk_widget_set_tooltip_text(drag_switch, 
+        "When enabled, moving the mouse during scrolling will slow down the scrolling.");
+    gtk_grid_attach(GTK_GRID(grid), drag_label, 0, 7, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), drag_switch, 1, 7, 1, 1);
 
     // Resolution Multiplier slider
     GtkWidget *res_label = gtk_label_new("Resolution Multiplier:");
@@ -515,8 +535,8 @@ int main(int argc, char *argv[]) {
     gtk_widget_set_halign(res_scale, GTK_ALIGN_FILL);
     gtk_widget_set_tooltip_text(res_scale, 
         "Multiplier for virtual trackpad resolution. Higher values increase precision but may cause issues.");
-    gtk_grid_attach(GTK_GRID(grid), res_label, 0, 7, 1, 1);
-    gtk_grid_attach(GTK_GRID(grid), res_scale, 1, 7, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), res_label, 0, 8, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), res_scale, 1, 8, 1, 1);
 
     // Refresh Rate slider
     GtkWidget *rate_label = gtk_label_new("Refresh Rate (Hz):");
@@ -529,19 +549,19 @@ int main(int argc, char *argv[]) {
     gtk_widget_set_halign(rate_scale, GTK_ALIGN_FILL);
     gtk_widget_set_tooltip_text(rate_scale, 
         "Refresh rate for inertia updates. Lower values reduce CPU usage but may feel less smooth.");
-    gtk_grid_attach(GTK_GRID(grid), rate_label, 0, 8, 1, 1);
-    gtk_grid_attach(GTK_GRID(grid), rate_scale, 1, 8, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), rate_label, 0, 9, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), rate_scale, 1, 9, 1, 1);
 
     // Apply button
     GtkWidget *apply_button = gtk_button_new_with_label("Apply");
     gtk_widget_set_hexpand(apply_button, TRUE);
     gtk_widget_set_halign(apply_button, GTK_ALIGN_FILL);
-    gtk_grid_attach(GTK_GRID(grid), apply_button, 0, 9, 2, 1);
+    gtk_grid_attach(GTK_GRID(grid), apply_button, 0, 10, 2, 1);
     
     // Create an array of widget pointers to pass as data
     GtkWidget *widgets[] = {
         sens_scale, mult_scale, fric_scale, vel_scale, natural_switch, grab_switch, device_combo,
-        res_scale, rate_scale
+        drag_switch, res_scale, rate_scale
     };
     g_signal_connect(apply_button, "clicked", G_CALLBACK(on_apply_clicked), widgets);
 

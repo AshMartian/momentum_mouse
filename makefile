@@ -42,3 +42,9 @@ $(TARGET): $(OBJS)
 
 clean:
 	rm -f $(OBJS) $(TARGET)
+
+test_inertia: src/test_inertia.c src/inertia_logic.o
+	$(CC) $(CFLAGS) -Iinclude -o test_inertia src/test_inertia.c src/inertia_logic.o -lm
+
+tests: test_inertia
+	./test_inertia

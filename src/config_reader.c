@@ -201,6 +201,18 @@ void load_config_file(const char *filename) {
                         printf("Config: refresh_rate=%d\n", refresh_rate);
                     }
                 }
+            } else if (strcmp(k, "mouse_move_drag") == 0) {
+                if (strcmp(value, "true") == 0 || strcmp(value, "1") == 0) {
+                    mouse_move_drag = 1;
+                    if (debug_mode) {
+                        printf("Config: mouse_move_drag=true\n");
+                    }
+                } else if (strcmp(value, "false") == 0 || strcmp(value, "0") == 0) {
+                    mouse_move_drag = 0;
+                    if (debug_mode) {
+                        printf("Config: mouse_move_drag=false\n");
+                    }
+                }
             } else if (strcmp(k, "device_name") == 0) {
                 // Store the device name
                 if (strlen(value) > 0) {

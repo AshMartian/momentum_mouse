@@ -42,6 +42,7 @@ extern double sensitivity_divisor; // Divisor for sensitivity when using touchpa
 extern double resolution_multiplier; // Multiplier for virtual trackpad resolution
 extern int refresh_rate; // Refresh rate in Hz for inertia updates
 extern char *device_override;      // Device path override
+extern int mouse_move_drag;        // Whether mouse movement should slow down scrolling
 // Constant for inertia stop threshold
 #define INERTIA_STOP_THRESHOLD 0.5  // Velocity threshold below which inertia stops
 

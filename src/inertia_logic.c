@@ -84,6 +84,31 @@ void update_inertia(int delta) {
     // Store the old velocity for smoothing
     double old_velocity = current_velocity;
     
+    // If this is a direction change during active inertia, handle it specially
+    if (inertia_active && ((current_velocity > 0 && delta < 0) || (current_velocity < 0 && delta > 0))) {
+        if (debug_mode) {
+            printf("Direction change detected during inertia: velocity=%.2f, delta=%d\n", 
+                   current_velocity, delta);
+        }
+        
+        // Stop inertia and start fresh in the new direction
+        // This provides more predictable behavior
+        stop_inertia();
+        
+        // Apply the new delta with a boost to make the direction change feel responsive
+        double boost_factor = 1.5;
+        current_velocity = delta * 30.0 * (scroll_sensitivity / sensitivity_divisor) * boost_factor;
+        current_position = (delta > 0) ? 10.0 : -10.0;
+        inertia_active = 1;
+        
+        if (debug_mode) {
+            printf("Direction change reset: new velocity=%.2f, position=%.2f\n", 
+                   current_velocity, current_position);
+        }
+        
+        return;
+    }
+    
     // Determine if this is a continuation of scrolling in the same direction
     // For initial scroll, use base sensitivity without multiplier
     double velocity_factor = 30.0 * (scroll_sensitivity / sensitivity_divisor);
@@ -100,32 +125,6 @@ void update_inertia(int delta) {
                 printf("Consecutive scroll in same direction, applying multiplier: %.2f, velocity factor: %.2f\n", 
                        scroll_multiplier, velocity_factor);
             }
-        } else if ((current_velocity > 0 && delta < 0) || (current_velocity < 0 && delta > 0)) {
-            // Opposite direction - completely reset the gesture like we do at boundaries
-            if (debug_mode) {
-                printf("Direction change detected, ending touch gesture and resetting velocity\n");
-            }
-            
-            // End the current touch gesture
-            // end_multitouch_gesture();
-            
-            // Reset velocity completely
-            current_velocity = 0.0;
-            
-            // Set position to a small value in the new direction
-            current_position = (delta > 0) ? 10.0 : -10.0;
-            
-            // Use standard factor for the new direction (without multiplier for first scroll)
-            velocity_factor = 15.0 * (scroll_sensitivity / sensitivity_divisor);
-            
-            // We've completed a direction change reset
-            if (debug_mode) {
-                printf("Direction change reset complete\n");
-            }
-            
-            // Return early to skip the rest of the update
-            // The next call will start a new gesture in the opposite direction
-            return;
         }
     }
     
@@ -160,12 +159,14 @@ void update_inertia(int delta) {
     
     // Update position - use a larger factor for more responsive initial movement
     // For initial scroll, don't apply multiplier
-    if (!inertia_active || ((current_velocity > 0 && delta < 0) || (current_velocity < 0 && delta > 0))) {
-        // Initial scroll or direction change - don't apply multiplier
+    if (!inertia_active) {
+        // Initial scroll - don't apply multiplier
         current_position += (double)delta * 20.0 * (scroll_sensitivity / sensitivity_divisor);
     } else {
         // Consecutive scroll in same direction - apply multiplier
-        current_position += (double)delta * 20.0 * (scroll_sensitivity / sensitivity_divisor) * scroll_multiplier;
+        current_position += (double)delta * 20.0 * (scroll_sensitivity / sensitivity_divisor) * 
+                           (((current_velocity > 0 && delta > 0) || (current_velocity < 0 && delta < 0)) ? 
+                            scroll_multiplier : 1.0);
     }
     
     if (debug_mode) {
@@ -198,7 +199,7 @@ int is_inertia_active(void) {
 
 // Apply friction based on mouse movement
 void apply_mouse_friction(int movement_magnitude) {
-    if (!inertia_active) {
+    if (!inertia_active || !mouse_move_drag) {
         return;
     }
     

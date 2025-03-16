@@ -13,6 +13,7 @@
 int use_multitouch = 1;
 int grab_device = 1;  // Default to grabbing for better performance
 int daemon_mode = 0;  // Default to foreground mode
+int mouse_move_drag = 1; // Default to enabled - mouse movement slows scrolling
 ScrollDirection scroll_direction = SCROLL_DIRECTION_TRADITIONAL;  // Default
 ScrollAxis scroll_axis = SCROLL_AXIS_VERTICAL;  // Default to vertical scrolling
 int auto_detect_direction = 1;  // Try to auto-detect by default
@@ -77,6 +78,8 @@ int main(int argc, char *argv[]) {
             printf("                              Higher values increase precision but may cause issues\n");
             printf("  --refresh-rate=VALUE         Set refresh rate in Hz for inertia updates (default: 200)\n");
             printf("                              Lower values reduce CPU usage but may feel less smooth\n");
+            printf("  --mouse-move-drag           Enable slowing down scrolling when mouse moves (default)\n");
+            printf("  --no-mouse-move-drag        Disable slowing down scrolling when mouse moves\n");
             printf("  --config=PATH               Use the specified config file\n");
             printf("  --daemon                    Run as a background daemon\n");
             printf("\n");
@@ -202,6 +205,10 @@ int main(int argc, char *argv[]) {
                 fprintf(stderr, "Invalid refresh rate: %s\n", argv[i] + 15);
                 fprintf(stderr, "Using default refresh rate: 200\n");
             }
+        } else if (strcmp(argv[i], "--mouse-move-drag") == 0) {
+            mouse_move_drag = 1;
+        } else if (strcmp(argv[i], "--no-mouse-move-drag") == 0) {
+            mouse_move_drag = 0;
         } else if (argv[i][0] != '-') {
             // Assume this is the device path
             if (local_device_override) {

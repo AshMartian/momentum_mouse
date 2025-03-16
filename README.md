@@ -2,7 +2,7 @@
 
 ## Introduction
 
-<div style="display: flex; align-items: center;">
+<div style="display: flex !important; align-items: center !important;">
   <img src="debian/icons/momentum_mouse.png" alt="Icon" width="100" style="margin-right: 20px;">
   <p>
     <strong>Momentum Mouse</strong> brings smooth, natural scrolling to Linux desktop environments. 
@@ -58,10 +58,10 @@ Instead of content jumping in fixed increments, it glides naturally with momentu
 
 ```bash
 # Download the latest .deb package
-wget https://github.com/AshMartian/momentum_mouse/releases/latest/download/momentum-mouse_0.4.0_amd64.deb
+wget https://github.com/AshMartian/momentum_mouse/releases/latest/download/momentum-mouse_0.5.0_amd64.deb
 
 # Install the package
-sudo dpkg -i momentum-mouse_0.4.0_amd64.deb
+sudo dpkg -i momentum-mouse_0.5.0_amd64.deb
 
 # Install dependencies if needed
 sudo apt-get install -f
@@ -94,8 +94,8 @@ sudo systemctl start momentum_mouse.service
 
 ## Configuration
 
-<div style="display: flex; align-items: center;">
-  <img src="docs/gui-v0.4.0.png" alt="Settings Window" width="250" style="margin-right: 20px;">
+<div style="display: flex !important; align-items: center !important;">
+  <img src="docs/gui-v0.5.0.png" alt="Settings Window" width="250" style="margin-right: 20px;">
   <div>
     <p><strong>Momentum Mouse</strong> can be configured through:</p>
     <ol>
