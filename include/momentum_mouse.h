@@ -4,6 +4,9 @@
 // Include the input_event struct definition
 #include <linux/input.h>
 #include <linux/limits.h>
+#include <pthread.h>
+#include <stdbool.h>
+#include <signal.h> // For sig_atomic_t
 
 // Scroll direction enum
 typedef enum {
@@ -16,6 +19,17 @@ typedef enum {
     SCROLL_AXIS_VERTICAL = 0,   // Standard vertical scrolling
     SCROLL_AXIS_HORIZONTAL = 1  // Horizontal scrolling
 } ScrollAxis;
+
+#define SCROLL_QUEUE_SIZE 64 // Adjust size as needed
+
+typedef struct {
+    int deltas[SCROLL_QUEUE_SIZE];
+    int head;
+    int tail;
+    int count;
+    pthread_mutex_t mutex;
+    pthread_cond_t cond;
+} ScrollQueue;
 
 // Structure to represent an input device
 typedef struct {
@@ -43,8 +57,26 @@ extern double resolution_multiplier; // Multiplier for virtual trackpad resoluti
 extern int refresh_rate; // Refresh rate in Hz for inertia updates
 extern char *device_override;      // Device path override
 extern int mouse_move_drag;        // Whether mouse movement should slow down scrolling
-// Constant for inertia stop threshold
-#define INERTIA_STOP_THRESHOLD 0.5  // Velocity threshold below which inertia stops
+
+// Global flag for signal handling and thread control
+// Defined and initialized at file scope in momentum_mouse.c
+extern volatile sig_atomic_t running;
+
+// Shared scroll queue
+extern ScrollQueue scroll_queue; // Defined in momentum_mouse.c
+
+// Mutex for protecting inertia state and signals (velocity, position, active, stop/friction flags)
+extern pthread_mutex_t state_mutex; // Defined in momentum_mouse.c
+// Condition variable for state changes (stop/friction signals, potentially inertia updates)
+extern pthread_cond_t state_cond; // Defined in momentum_mouse.c
+
+// Flags for communication between threads (protected by state_mutex)
+extern bool stop_requested; // Defined in momentum_mouse.c
+extern int pending_friction_magnitude; // Store magnitude for friction request // Defined in momentum_mouse.c
+
+// Thread IDs
+extern pthread_t input_thread_id; // Defined in momentum_mouse.c
+extern pthread_t inertia_thread_id; // Defined in momentum_mouse.c
 
 // Structure to track boundary reset information
 typedef struct {
@@ -57,6 +89,7 @@ typedef struct {
 extern BoundaryResetInfo boundary_reset_info;
 extern int boundary_reset_in_progress;
 extern struct timeval last_boundary_reset_time;
+extern double inertia_stop_threshold; // Velocity threshold below which inertia stops
 
 // Original event emitter functions
 int setup_virtual_device(void);
@@ -73,7 +106,7 @@ void destroy_virtual_multitouch_device(void);
 // Inertia logic functions
 void update_inertia(int delta);
 void process_inertia(void);
-void process_inertia_mt(void);
+// void process_inertia_mt(void); // Removed - logic is now in inertia_thread_func
 void start_inertia(int initial_velocity);
 void stop_inertia(void);
 int is_inertia_active(void);
@@ -97,5 +130,13 @@ void debug_log(const char *format, ...);
 int list_input_devices(InputDevice **devices);
 void free_input_devices(InputDevice *devices, int count);
 char* find_device_by_name(const char *device_name);
+
+// Thread functions
+void* input_thread_func(void* arg);
+void* inertia_thread_func(void* arg);
+
+// Function to reset finger positions (used by inertia thread after boundary)
+void reset_finger_positions(void);
+void jump_finger_positions(int delta); // New function for boundary jump
 
 #endif

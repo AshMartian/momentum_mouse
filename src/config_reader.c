@@ -193,12 +193,28 @@ void load_config_file(const char *filename) {
                         printf("Config: resolution_multiplier=%.2f\n", resolution_multiplier);
                     }
                 }
+            } else if (strcmp(k, "inertia_stop_threshold") == 0) {
+                double val = atof(value);
+                if (val >= 0.0) { // Allow 0
+                    inertia_stop_threshold = val;
+                    if (debug_mode) {
+                        printf("Config: inertia_stop_threshold=%.2f\n", inertia_stop_threshold);
+                    }
+                }
             } else if (strcmp(k, "refresh_rate") == 0) {
                 int val = atoi(value);
                 if (val > 0) {
                     refresh_rate = val;
                     if (debug_mode) {
                         printf("Config: refresh_rate=%d\n", refresh_rate);
+                    }
+                }
+            } else if (strcmp(k, "inertia_stop_threshold") == 0) {
+                double val = atof(value);
+                if (val >= 0.0) { // Allow 0
+                    inertia_stop_threshold = val;
+                    if (debug_mode) {
+                        printf("Config: inertia_stop_threshold=%.2f\n", inertia_stop_threshold);
                     }
                 }
             } else if (strcmp(k, "mouse_move_drag") == 0) {

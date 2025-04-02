@@ -26,6 +26,7 @@ void debug_log(const char *format, ...) {
 #define DEFAULT_FRICTION    2.0
 #define DEFAULT_MAX_VELOCITY 0.8
 #define DEFAULT_SENSITIVITY_DIVISOR 1.0
+#define DEFAULT_INERTIA_STOP_THRESHOLD 1.0
 
 // System-wide config file path
 #define SYSTEM_CONFIG_FILE "/etc/momentum_mouse.conf"
@@ -109,6 +110,7 @@ static void on_apply_clicked(GtkWidget *widget, gpointer data) {
     gboolean drag = gtk_switch_get_active(GTK_SWITCH(widgets[7]));
     gdouble resolution_mult = gtk_range_get_value(GTK_RANGE(widgets[8]));
     gint refresh_rate_val = (gint)gtk_range_get_value(GTK_RANGE(widgets[9]));
+    gdouble stop_threshold = gtk_range_get_value(GTK_RANGE(widgets[10]));
 
     // Get the selected device
     gchar *selected_device = gtk_combo_box_text_get_active_text(GTK_COMBO_BOX_TEXT(device_combo));
@@ -124,6 +126,7 @@ static void on_apply_clicked(GtkWidget *widget, gpointer data) {
     g_key_file_set_boolean(config, CONFIG_GROUP, "mouse_move_drag", drag);
     g_key_file_set_double(config, CONFIG_GROUP, "resolution_multiplier", resolution_mult);
     g_key_file_set_integer(config, CONFIG_GROUP, "refresh_rate", refresh_rate_val);
+    g_key_file_set_double(config, CONFIG_GROUP, "inertia_stop_threshold", stop_threshold);
     
     // Handle device selection
     if (selected_device && strcmp(selected_device, "Auto-detect (recommended)") != 0 && 
@@ -456,7 +459,7 @@ int main(int argc, char *argv[]) {
     // Max Velocity slider
     GtkWidget *vel_label = gtk_label_new("Max Velocity:");
     gtk_widget_set_halign(vel_label, GTK_ALIGN_END);
-    GtkWidget *vel_scale = gtk_scale_new_with_range(GTK_ORIENTATION_HORIZONTAL, 0.2, 2.0, 0.1);
+    GtkWidget *vel_scale = gtk_scale_new_with_range(GTK_ORIENTATION_HORIZONTAL, 0.2, 10.0, 0.1);
     gtk_range_set_value(GTK_RANGE(vel_scale), max_velocity);
     gtk_widget_set_hexpand(vel_scale, TRUE);
     gtk_widget_set_halign(vel_scale, GTK_ALIGN_FILL);
@@ -541,27 +544,41 @@ int main(int argc, char *argv[]) {
     // Refresh Rate slider
     GtkWidget *rate_label = gtk_label_new("Refresh Rate (Hz):");
     gtk_widget_set_halign(rate_label, GTK_ALIGN_END);
-    GtkWidget *rate_scale = gtk_scale_new_with_range(GTK_ORIENTATION_HORIZONTAL, 30, 500, 10);
+    GtkWidget *rate_scale = gtk_scale_new_with_range(GTK_ORIENTATION_HORIZONTAL, 30, 2500, 10);
     gint refresh_rate_val = g_key_file_get_integer(config, CONFIG_GROUP, "refresh_rate", NULL);
     if (refresh_rate_val == 0) refresh_rate_val = 200; // Default
     gtk_range_set_value(GTK_RANGE(rate_scale), refresh_rate_val);
     gtk_widget_set_hexpand(rate_scale, TRUE);
     gtk_widget_set_halign(rate_scale, GTK_ALIGN_FILL);
     gtk_widget_set_tooltip_text(rate_scale, 
-        "Refresh rate for inertia updates. Lower values reduce CPU usage but may feel less smooth.");
+        "Refresh rate for inertia updates. Lower values reduce CPU usage but will feel less smooth.");
     gtk_grid_attach(GTK_GRID(grid), rate_label, 0, 9, 1, 1);
     gtk_grid_attach(GTK_GRID(grid), rate_scale, 1, 9, 1, 1);
+
+    // Inertia Stop Threshold slider
+    GtkWidget *stop_label = gtk_label_new("Inertia Stop Threshold:");
+    gtk_widget_set_halign(stop_label, GTK_ALIGN_END);
+    GtkWidget *stop_scale = gtk_scale_new_with_range(GTK_ORIENTATION_HORIZONTAL, 0.5, 50.0, 0.5);
+    gdouble stop_threshold = g_key_file_get_double(config, CONFIG_GROUP, "inertia_stop_threshold", NULL);
+    if (stop_threshold == 0) stop_threshold = DEFAULT_INERTIA_STOP_THRESHOLD; // Default
+    gtk_range_set_value(GTK_RANGE(stop_scale), stop_threshold);
+    gtk_widget_set_hexpand(stop_scale, TRUE);
+    gtk_widget_set_halign(stop_scale, GTK_ALIGN_FILL);
+    gtk_widget_set_tooltip_text(stop_scale,
+        "Velocity threshold below which inertia stops. Higher values allow inertia to continue at lower speeds.");
+    gtk_grid_attach(GTK_GRID(grid), stop_label, 0, 10, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), stop_scale, 1, 10, 1, 1);
 
     // Apply button
     GtkWidget *apply_button = gtk_button_new_with_label("Apply");
     gtk_widget_set_hexpand(apply_button, TRUE);
     gtk_widget_set_halign(apply_button, GTK_ALIGN_FILL);
-    gtk_grid_attach(GTK_GRID(grid), apply_button, 0, 10, 2, 1);
+    gtk_grid_attach(GTK_GRID(grid), apply_button, 0, 11, 2, 1); // Adjusted row index
     
     // Create an array of widget pointers to pass as data
     GtkWidget *widgets[] = {
         sens_scale, mult_scale, fric_scale, vel_scale, natural_switch, grab_switch, device_combo,
-        drag_switch, res_scale, rate_scale
+        drag_switch, res_scale, rate_scale, stop_scale // Added stop_scale
     };
     g_signal_connect(apply_button, "clicked", G_CALLBACK(on_apply_clicked), widgets);
 

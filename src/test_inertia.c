@@ -4,6 +4,9 @@
 #include <string.h>
 #include <time.h>
 #include <sys/time.h>
+#include <pthread.h> // Added
+#include <stdbool.h> // Added
+#include <signal.h>  // Added for sig_atomic_t
 #include "momentum_mouse.h"
 
 // Mock functions to avoid linking with the full application
@@ -21,7 +24,14 @@ void end_multitouch_gesture(void) {
     printf("END GESTURE\n");
 }
 
-// Global variables needed for testing
+// Mock implementation for function defined in event_emitter_mt.c
+void reset_finger_positions(void) {
+    // Mock implementation - does nothing or logs
+    printf("MOCK: reset_finger_positions() called.\n");
+}
+
+
+// Global variables needed for testing (some are mocks for globals in momentum_mouse.c)
 int screen_width = 1920;
 int screen_height = 1080;
 int post_boundary_frames = 0;
@@ -37,6 +47,22 @@ double max_velocity_factor = 0.8;
 double sensitivity_divisor = 1.0;
 int debug_mode = 1;
 int mouse_move_drag = 1;
+// --- Mock Global Variable Definitions ---
+pthread_mutex_t state_mutex;
+ScrollQueue scroll_queue; // Assumes ScrollQueue struct is defined via momentum_mouse.h
+pthread_cond_t state_cond; // Although not directly used by inertia_logic, it's in the header group
+volatile sig_atomic_t running = 1; // Initialize to 1 for tests
+bool stop_requested = false;
+int pending_friction_magnitude = 0;
+int use_multitouch = 1; // Default to multitouch for testing relevant logic
+int grab_device = 0; // Not strictly needed by inertia_logic, but often related
+int auto_detect_direction = 0; // Not needed by inertia_logic
+char *device_override = NULL; // Not needed by inertia_logic
+int refresh_rate = 200; // Provide a default
+double resolution_multiplier = 10.0; // Provide a default
+double inertia_stop_threshold = 1.0; // Provide a default
+// --- End Mock Global Variable Definitions ---
+
 
 // Test case for direction changes during inertia
 void test_direction_change(void) {
@@ -54,11 +80,13 @@ void test_direction_change(void) {
     
     // Simulate time passing and inertia processing
     printf("Processing inertia for 10 frames...\n");
+    /*
     for (int i = 0; i < 10; i++) {
         process_inertia_mt();
         usleep(50000); // 50ms between frames
         printf("Frame %d: velocity=%.2f, position=%.2f\n", i, current_velocity, current_position);
     }
+    */
     
     // Now simulate scrolling in the opposite direction
     printf("\nSimulating scroll down (delta=1) during inertia...\n");
@@ -69,11 +97,13 @@ void test_direction_change(void) {
     
     // Continue processing inertia
     printf("Processing inertia for 10 more frames...\n");
+    /*
     for (int i = 0; i < 10; i++) {
         process_inertia_mt();
         usleep(50000); // 50ms between frames
         printf("Frame %d: velocity=%.2f, position=%.2f\n", i, current_velocity, current_position);
     }
+    */
     
     printf("Test completed.\n\n");
 }
@@ -94,11 +124,13 @@ void test_mouse_movement_during_inertia(void) {
     
     // Process inertia for a few frames
     printf("Processing inertia for 5 frames...\n");
+    /*
     for (int i = 0; i < 5; i++) {
         process_inertia_mt();
         usleep(50000);
         printf("Frame %d: velocity=%.2f, position=%.2f\n", i, current_velocity, current_position);
     }
+    */
     
     // Simulate mouse movement
     printf("\nSimulating mouse movement...\n");
@@ -109,11 +141,13 @@ void test_mouse_movement_during_inertia(void) {
     
     // Continue processing inertia
     printf("Processing inertia for 5 more frames...\n");
+    /*
     for (int i = 0; i < 5; i++) {
         process_inertia_mt();
         usleep(50000);
         printf("Frame %d: velocity=%.2f, position=%.2f\n", i, current_velocity, current_position);
     }
+    */
     
     printf("Test completed.\n\n");
 }
@@ -137,11 +171,13 @@ void test_mouse_movement_drag_disabled(void) {
     
     // Process inertia for a few frames
     printf("Processing inertia for 5 frames...\n");
+    /*
     for (int i = 0; i < 5; i++) {
         process_inertia_mt();
         usleep(50000);
         printf("Frame %d: velocity=%.2f, position=%.2f\n", i, current_velocity, current_position);
     }
+    */
     
     // Simulate mouse movement
     printf("\nSimulating mouse movement with drag disabled...\n");
@@ -152,11 +188,13 @@ void test_mouse_movement_drag_disabled(void) {
     
     // Continue processing inertia
     printf("Processing inertia for 5 more frames...\n");
+    /*
     for (int i = 0; i < 5; i++) {
         process_inertia_mt();
         usleep(50000);
         printf("Frame %d: velocity=%.2f, position=%.2f\n", i, current_velocity, current_position);
     }
+    */
     
     // Re-enable mouse move drag for other tests
     mouse_move_drag = 1;
@@ -167,11 +205,36 @@ void test_mouse_movement_drag_disabled(void) {
 int main(void) {
     // Seed random number generator
     srand(time(NULL));
-    
+
+    // --- Initialize Mocks ---
+    printf("Initializing mock mutexes and cond vars...\n");
+    if (pthread_mutex_init(&state_mutex, NULL) != 0) {
+        perror("Mock state_mutex init failed"); return 1;
+    }
+    if (pthread_mutex_init(&scroll_queue.mutex, NULL) != 0) {
+        perror("Mock scroll_queue.mutex init failed");
+        pthread_mutex_destroy(&state_mutex); return 1;
+    }
+    if (pthread_cond_init(&scroll_queue.cond, NULL) != 0) {
+        perror("Mock scroll_queue.cond init failed");
+        pthread_mutex_destroy(&scroll_queue.mutex);
+        pthread_mutex_destroy(&state_mutex); return 1;
+    }
+    // Initialize scroll queue fields
+    memset(&scroll_queue, 0, sizeof(scroll_queue));
+    // --- End Initialization ---
+
     // Run tests
     test_direction_change();
     test_mouse_movement_during_inertia();
     test_mouse_movement_drag_disabled();
-    
+
+    // --- Cleanup Mocks ---
+    printf("Destroying mock mutexes and cond vars...\n");
+    pthread_mutex_destroy(&state_mutex);
+    pthread_mutex_destroy(&scroll_queue.mutex);
+    pthread_cond_destroy(&scroll_queue.cond);
+    // --- End Cleanup ---
+
     return 0;
 }

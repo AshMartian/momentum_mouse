@@ -3,20 +3,27 @@
 #include <unistd.h>
 #include <math.h>
 #include <sys/time.h>
+#include <pthread.h> // Add this
+#include <errno.h>   // Add this for ETIMEDOUT
+#include <stdbool.h> // Ensure this is included
 #include "momentum_mouse.h"
 
-// Forward declaration for function used in this file
+// Forward declarations for functions used in this file
 extern void end_multitouch_gesture(void);
 extern int screen_width;
 extern int screen_height;
 extern int post_boundary_frames;  // Flag from event_emitter_mt.c
 
 // Use a double for finer precision.
+// Keep these global for now, but remember they need state_mutex protection
 double current_velocity = 0.0;  // Make accessible to other files
-static int inertia_active = 0;
-static struct timeval last_time = {0};
+int inertia_active = 0; // Made non-static for mutex access in is_inertia_active
+struct timeval last_time = {0}; // Made non-static for mutex access
 // Make current_position accessible to other files that need to reset it
 double current_position = 0.0; // Keep only this position variable
+
+// Threshold for detecting a significant direction change vs minor overshoot
+#define DIRECTION_CHANGE_VELOCITY_THRESHOLD 10.0
 
 // Helper to get time difference in seconds between two timeval structs.
 static double time_diff_in_seconds(struct timeval *start, struct timeval *end) {
@@ -85,40 +92,35 @@ void update_inertia(int delta) {
     double old_velocity = current_velocity;
     
     // If this is a direction change during active inertia, handle it specially
-    if (inertia_active && ((current_velocity > 0 && delta < 0) || (current_velocity < 0 && delta > 0))) {
+    // Only trigger if the current velocity is significant enough
+    if (inertia_active &&
+        fabs(current_velocity) > DIRECTION_CHANGE_VELOCITY_THRESHOLD && ((current_velocity > 0 && delta < 0) || (current_velocity < 0 && delta > 0))) {
         if (debug_mode) {
-            printf("Direction change detected during inertia: velocity=%.2f, delta=%d\n", 
+            printf("Direction change detected during inertia: velocity=%.2f, delta=%d\n",
                    current_velocity, delta);
         }
-        
-        // Stop inertia and start fresh in the new direction
-        // This provides more predictable behavior
+         
+        // Stop inertia completely. The rest of the function will handle
+        // starting the new movement as if it were the beginning of a scroll sequence.
         stop_inertia();
-        
-        // Apply the new delta with a boost to make the direction change feel responsive
-        double boost_factor = 1.5;
-        current_velocity = delta * 30.0 * (scroll_sensitivity / sensitivity_divisor) * boost_factor;
-        current_position = (delta > 0) ? 10.0 : -10.0;
-        inertia_active = 1;
-        
-        if (debug_mode) {
-            printf("Direction change reset: new velocity=%.2f, position=%.2f\n", 
-                   current_velocity, current_position);
-        }
-        
-        return;
+         
+        // DO NOT set velocity/position here.
+        // DO NOT set inertia_active = 1 here.
+        // DO NOT return here. Let the rest of the function execute.
     }
-    
+     
     // Determine if this is a continuation of scrolling in the same direction
     // For initial scroll, use base sensitivity without multiplier
-    double velocity_factor = 30.0 * (scroll_sensitivity / sensitivity_divisor);
+    // Increase base factor for more initial impact
+    double velocity_factor = 60.0 * (scroll_sensitivity / sensitivity_divisor); // Increased base factor
     
     if (inertia_active) {
         // If scrolling in the same direction as current velocity and within a short time window
         if (((current_velocity > 0 && delta > 0) || (current_velocity < 0 && delta < 0)) && dt < 0.3) {
             // Enhance the effect for consecutive scrolls in the same direction
             // Apply the multiplier only for consecutive scrolls
-            velocity_factor = (30.0 + (fabs(current_velocity) / 3.0)) * 
+            // Also increase base factor here
+            velocity_factor = (60.0 + (fabs(current_velocity) / 3.0)) *  // Increased base factor
                              (scroll_sensitivity / sensitivity_divisor) * scroll_multiplier;
             
             if (debug_mode) {
@@ -160,11 +162,11 @@ void update_inertia(int delta) {
     // Update position - use a larger factor for more responsive initial movement
     // For initial scroll, don't apply multiplier
     if (!inertia_active) {
-        // Initial scroll - don't apply multiplier
-        current_position += (double)delta * 20.0 * (scroll_sensitivity / sensitivity_divisor);
+        // Initial scroll - don't apply multiplier, use increased base factor
+        current_position += (double)delta * 40.0 * (scroll_sensitivity / sensitivity_divisor); // Increased base factor
     } else {
-        // Consecutive scroll in same direction - apply multiplier
-        current_position += (double)delta * 20.0 * (scroll_sensitivity / sensitivity_divisor) * 
+        // Consecutive scroll in same direction - apply multiplier, use increased base factor
+        current_position += (double)delta * 40.0 * (scroll_sensitivity / sensitivity_divisor) * // Increased base factor
                            (((current_velocity > 0 && delta > 0) || (current_velocity < 0 && delta < 0)) ? 
                             scroll_multiplier : 1.0);
     }
@@ -177,6 +179,7 @@ void update_inertia(int delta) {
 }
 
 // Optionally, explicitly start inertia with an initial velocity.
+// NOTE: This function should also be called under state_mutex if used externally.
 void start_inertia(int initial_velocity) {
     current_velocity = (double)initial_velocity;
     inertia_active = 1;
@@ -184,20 +187,25 @@ void start_inertia(int initial_velocity) {
 }
 
 // Call this to cancel any ongoing inertia fling.
+// MUST be called with state_mutex HELD.
 void stop_inertia(void) {
     current_velocity = 0.0;
     inertia_active = 0;
     last_time.tv_sec = 0;
     last_time.tv_usec = 0;
-    // end_multitouch_gesture();  // End the touch gesture when inertia stops
+    // Gesture ending is handled in inertia_thread_func after calling this
 }
 
-// Check if inertia is currently active
+// Check if inertia is currently active (Thread-safe version)
 int is_inertia_active(void) {
-    return inertia_active;
+    pthread_mutex_lock(&state_mutex);
+    int active = inertia_active;
+    pthread_mutex_unlock(&state_mutex);
+    return active;
 }
 
 // Apply friction based on mouse movement
+// MUST be called with state_mutex HELD.
 void apply_mouse_friction(int movement_magnitude) {
     if (!inertia_active || !mouse_move_drag) {
         return;
@@ -213,190 +221,251 @@ void apply_mouse_friction(int movement_magnitude) {
     double max_friction = 0.05 * scroll_friction / sqrt(scroll_sensitivity);
     if (friction_factor > max_friction) friction_factor = max_friction;  // Reduced from 0.95
     
-    double old_velocity = current_velocity;
-    
+
     // Apply the friction by reducing velocity
     current_velocity *= (1.0 - friction_factor);
     
-    if (debug_mode && movement_magnitude > 10) {
-        printf("Mouse friction: movement=%d, factor=%.3f, velocity: %.2f -> %.2f\n", 
-               movement_magnitude, friction_factor, old_velocity, current_velocity);
-    }
-    
+    // if (debug_mode && movement_magnitude > 10) {
+    //     printf("Mouse friction: movement=%d, factor=%.3f, velocity: %.2f -> %.2f\n", 
+    //            movement_magnitude, friction_factor, old_velocity, current_velocity);
+    // }
+
     // Only stop inertia if velocity becomes extremely small
-    if (fabs(current_velocity) < INERTIA_STOP_THRESHOLD) {
+    if (fabs(current_velocity) < inertia_stop_threshold) {
         if (debug_mode) {
-            printf("Velocity too low (%.2f), stopping inertia\n", current_velocity);
+            printf("Velocity too low (%.2f < %.2f), stopping inertia\n",
+                   current_velocity, inertia_stop_threshold);
         }
         stop_inertia();
     }
     
     // Update the last time to prevent time-based friction from being applied immediately
-    gettimeofday(&last_time, NULL);
+    gettimeofday(&last_time, NULL); // Already under state_mutex
 }
 
-// This function should be called periodically in the main loop.
-// It emits synthetic scroll events based on the current velocity and decays that velocity over time.
-void process_inertia(void) {
-    static int frame_count = 0;
-    
-    if (!inertia_active) {
-        // Reset frame count when inertia is not active
-        frame_count = 0;
-        return;
-    }
-    
-    frame_count++;
-    
-    struct timeval now;
-    gettimeofday(&now, NULL);
-    double dt = time_diff_in_seconds(&last_time, &now);
-    last_time = now;
-    
-    // Log inertia state every 10 frames
-    if (frame_count % 10 == 0) {
-        printf("INERTIA: frame=%d, velocity=%.2f, position=%.2f, dt=%.3fs\n", 
-               frame_count, current_velocity, current_position, dt);
-    }
-    
-    // If the velocity is negligible, stop the inertia.
-    if (fabs(current_velocity) < INERTIA_STOP_THRESHOLD) {
-        stop_inertia();
-        return;
-    }
-    
-    // Emit a synthetic scroll event with the current velocity (rounded to the nearest non-zero integer).
-    int event_val = (int)round(current_velocity);
-    if (emit_scroll_event(event_val) < 0) {
-        fprintf(stderr, "Failed to emit scroll event in inertia processing.\n");
-    }
-    
-    // Apply an exponential decay to simulate friction.
-    // Use the scroll_friction parameter to control deceleration
-    const double friction = 2.0 * scroll_friction;
-    current_velocity *= exp(-friction * dt);
-    
-    // Sleep a little to approximate a 60 FPS update (the dt measurement handles timing accuracy).
-    usleep(16000);
+
+// Helper to get future time as timespec for timedwait
+static void get_future_time(struct timespec *ts, int milliseconds) {
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    ts->tv_sec = tv.tv_sec + (milliseconds / 1000);
+    ts->tv_nsec = (tv.tv_usec * 1000) + ((milliseconds % 1000) * 1000000);
+    ts->tv_sec += ts->tv_nsec / 1000000000;
+    ts->tv_nsec %= 1000000000;
 }
 
-// This function is similar to process_inertia() but emits multitouch events instead
-void process_inertia_mt(void) {
-    static int frame_count = 0;
-    static int was_active = 0;
-    
-    if (!inertia_active) {
-        // End the touch gesture if we were previously active
-        if (was_active) {
-            // end_multitouch_gesture();
-            was_active = 0;
-            frame_count = 0;
-        }
-        return;
+
+// Inertia processing thread function
+void* inertia_thread_func(void* arg) {
+    (void)arg; // Mark parameter as unused
+    printf("Inertia thread started.\n");
+    int dequeued_delta;
+    bool state_changed_this_cycle; // Track if queue/signal processing happened
+    int event_val_to_emit = 0; // Store event value calculated under lock
+    bool should_emit_event = false; // Flag to control emission
+    // bool needs_boundary_reset_action = false; // Removed - Boundary actions handled in emitter
+
+    // Ensure last_time is initialized before first use
+    pthread_mutex_lock(&state_mutex);
+    if (last_time.tv_sec == 0 && last_time.tv_usec == 0) {
+         gettimeofday(&last_time, NULL);
     }
-    
-    // Set active flag for next time
-    was_active = 1;
-    frame_count++;
-    
-    // Calculate time delta
-    struct timeval now;
-    gettimeofday(&now, NULL);
-    double dt = time_diff_in_seconds(&last_time, &now);
-    last_time = now;
-    
-    // Log inertia state periodically
-    if (debug_mode && frame_count % 20 == 0) {
-        printf("INERTIA: frame=%d, velocity=%.2f, position=%.2f, dt=%.3fs\n", 
-               frame_count, current_velocity, current_position, dt);
-    }
-    
-    // Apply friction to velocity - reduced to make scrolling last longer
-    const double friction = 0.6 * scroll_friction / sqrt(scroll_sensitivity);
-    double old_velocity = current_velocity;
-    current_velocity *= exp(-friction * dt);
-    
-    if (debug_mode && fabs(old_velocity - current_velocity) > 5.0) {
-        printf("Time-based friction: dt=%.3fs, friction=%.2f, velocity: %.2f -> %.2f\n", 
-               dt, friction, old_velocity, current_velocity);
-    }
-    
-    // Calculate position delta based on velocity - increased multiplier for better responsiveness
-    // Apply sensitivity_divisor to reduce sensitivity for touchpads
-    double position_delta = current_velocity * dt * 120.0 * (scroll_sensitivity / sensitivity_divisor);
-    
-    // Fix direction after boundary reset if needed
-    if (boundary_reset_in_progress && post_boundary_frames > 15) {
-        int expected_direction = boundary_reset_info.reset_direction;
-        int actual_direction = (position_delta > 0) ? 1 : -1;
-        
-        if (expected_direction != actual_direction && position_delta != 0) {
-            if (debug_mode) {
-                printf("DIRECTION-FIX: Correcting position_delta from %.2f to %.2f\n",
-                       position_delta, -position_delta);
+    pthread_mutex_unlock(&state_mutex);
+
+
+    while (running) {
+        state_changed_this_cycle = false;
+        should_emit_event = false;
+        event_val_to_emit = 0;
+        // needs_boundary_reset_action = false; // Removed
+
+        // --- 1. Wait for and Process Queue/Signals ---
+        pthread_mutex_lock(&scroll_queue.mutex);
+        // Wait only if queue is empty AND no stop/friction signal is pending
+        pthread_mutex_lock(&state_mutex);
+        bool signals_pending = stop_requested || (pending_friction_magnitude > 0);
+        pthread_mutex_unlock(&state_mutex);
+
+        while (scroll_queue.count == 0 && !signals_pending && running) {
+            // Wait for data or timeout (e.g., 10ms) to allow inertia processing
+            struct timespec wait_time;
+            // Use a shorter wait time if inertia is active to ensure timely updates
+            pthread_mutex_lock(&state_mutex);
+            int wait_ms = inertia_active ? 5 : 10; // 5ms if active, 10ms otherwise
+            pthread_mutex_unlock(&state_mutex);
+
+            get_future_time(&wait_time, wait_ms);
+            int rc = pthread_cond_timedwait(&scroll_queue.cond, &scroll_queue.mutex, &wait_time);
+
+            if (rc == ETIMEDOUT) {
+                break; // Timeout, proceed to inertia processing
+            } else if (rc != 0 && running) {
+                 perror("InertiaThread: scroll_queue pthread_cond_timedwait error");
+                 // Handle error appropriately, maybe break or continue
             }
-            position_delta = -position_delta;
-            current_velocity = -current_velocity;
+            // If woken up, re-check loop condition (queue count, signals, running)
+            pthread_mutex_lock(&state_mutex);
+            signals_pending = stop_requested || (pending_friction_magnitude > 0);
+            pthread_mutex_unlock(&state_mutex);
         }
-    }
-    
-    // Handle post-boundary transition - simplified for faster response
-    if (post_boundary_frames > 0) {
-        post_boundary_frames = 0;
-        boundary_reset_in_progress = 0;
-        
-        if (debug_mode) {
-            printf("POST-BOUNDARY: Skipping transition frames for faster response\n");
+        // Queue mutex is still held here
+
+        // --- 1a. Process Signals (Stop/Friction) ---
+        pthread_mutex_lock(&state_mutex);
+        if (stop_requested) {
+            if (inertia_active) {
+                 stop_inertia(); // Resets velocity, active flag, last_time
+                 if (use_multitouch) {
+                     // Call end_multitouch_gesture OUTSIDE the lock later
+                     should_emit_event = false; // Don't emit on stop frame
+                 }
+            }
+            stop_requested = false; // Reset flag
+            state_changed_this_cycle = true;
         }
-    }
-    
-    // Cap position delta to prevent large jumps
-    double screen_size = (scroll_axis == SCROLL_AXIS_VERTICAL) ? screen_height : screen_width;
-    double abs_velocity = fabs(current_velocity);
-    double max_delta_factor = 0.3;  // Default 30% of screen size
-    
-    if (abs_velocity > 500) {
-        max_delta_factor = 0.15;
-    } else if (abs_velocity > 300) {
-        max_delta_factor = 0.2;
-    }
-    
-    double max_delta = screen_size * max_delta_factor;
-    if (fabs(position_delta) > max_delta) {
-        double direction = (position_delta > 0) ? 1.0 : -1.0;
-        position_delta = direction * max_delta;
-        if (debug_mode) {
-            printf("POSITION: Capped delta to %.2f\n", position_delta);
+        if (pending_friction_magnitude > 0) {
+             if (debug_mode > 1) printf("InertiaThread: Friction request received (mag=%d).\n", pending_friction_magnitude);
+             if (inertia_active && mouse_move_drag) {
+                 // apply_mouse_friction needs state_mutex, which we hold
+                 apply_mouse_friction(pending_friction_magnitude);
+             }
+             pending_friction_magnitude = 0; // Reset magnitude
+             state_changed_this_cycle = true;
         }
-    }
-    
-    // Update position
-    current_position += position_delta;
-    
-    // Stop inertia if velocity is too low
-    if (fabs(current_velocity) < INERTIA_STOP_THRESHOLD) {
-        if (debug_mode) {
-            printf("Velocity too low (%.2f), stopping inertia\n", current_velocity);
+        pthread_mutex_unlock(&state_mutex);
+
+
+        // --- 1b. Process Scroll Queue ---
+        // Dequeue and process all available deltas
+        while (scroll_queue.count > 0) {
+            dequeued_delta = scroll_queue.deltas[scroll_queue.tail];
+            scroll_queue.tail = (scroll_queue.tail + 1) % SCROLL_QUEUE_SIZE;
+            scroll_queue.count--;
+            state_changed_this_cycle = true;
+
+            // Unlock queue mutex before calling update_inertia (which needs state_mutex)
+            pthread_mutex_unlock(&scroll_queue.mutex);
+
+            // --- Process the dequeued delta ---
+            pthread_mutex_lock(&state_mutex);
+            if (debug_mode > 1) printf("InertiaThread: Processing delta %d\n", dequeued_delta);
+            // update_inertia needs state_mutex, which we hold
+            update_inertia(dequeued_delta); // Updates velocity, position, active flag, last_time
+            pthread_mutex_unlock(&state_mutex);
+
+            // Re-lock queue mutex to check loop condition
+            pthread_mutex_lock(&scroll_queue.mutex);
         }
-        stop_inertia();
-        return;
-    }
-    
-    // Emit scroll event
-    int event_val = (int)round(position_delta);
-    if (event_val != 0) {
-        if (debug_mode && (abs(event_val) > 10 || frame_count % 20 == 0)) {
-            printf("EMIT: Sending event with delta=%d (from position_delta=%.2f)\n", 
-                   event_val, position_delta);
+        pthread_mutex_unlock(&scroll_queue.mutex); // Unlock queue mutex
+
+
+        // --- 2. Process Inertia Calculation (if active) ---
+        pthread_mutex_lock(&state_mutex);
+        if (inertia_active) {
+            // Removed boundary reset timeout check - handled implicitly by emitter logic
+
+            struct timeval now;
+            gettimeofday(&now, NULL);
+            // Ensure last_time is valid before calculating dt
+            double dt = (last_time.tv_sec == 0 && last_time.tv_usec == 0) ? 0.0 : time_diff_in_seconds(&last_time, &now);
+            last_time = now; // Update last_time under mutex
+
+            // Prevent huge dt if thread was stalled
+            if (dt > 0.1) { // e.g., > 100ms
+                if (debug_mode) printf("InertiaThread: Warning - large dt detected: %.3fs, capping to 0.1s\n", dt);
+                dt = 0.1;
+            }
+
+            // Apply time-based friction
+            const double friction = (use_multitouch ? (0.6 * scroll_friction / sqrt(scroll_sensitivity)) : (2.0 * scroll_friction));
+            double old_velocity = current_velocity;
+            current_velocity *= exp(-friction * dt);
+            if (debug_mode > 1 && fabs(old_velocity - current_velocity) > 0.1) {
+                 printf("InertiaThread: Time friction (dt=%.4f): %.2f -> %.2f\n", dt, old_velocity, current_velocity);
+            }
+
+
+            // Calculate position delta / event value
+            if (use_multitouch) {
+                // Calculate potential position change based on current velocity and time delta
+                double position_delta = current_velocity * dt; // Use the velocity directly (units/sec * sec)
+                current_position += position_delta; // Update position based on inertia
+
+                // Boundary check and clamping are now handled in emit_two_finger_scroll_event
+                event_val_to_emit = (int)round(position_delta);
+                if (event_val_to_emit != 0) {
+                    should_emit_event = true;
+                }
+            } else {
+                // Logic from process_inertia (Wheel events) - Remains the same
+                event_val_to_emit = (int)round(current_velocity);
+                if (event_val_to_emit != 0) {
+                     should_emit_event = true;
+                }
+                // Note: process_inertia didn't update current_position, add if needed
+            }
+
+             // Check if inertia should stop due to low velocity
+            if (fabs(current_velocity) < inertia_stop_threshold) {
+                if (debug_mode) printf("InertiaThread: Velocity %.2f below threshold %.2f, stopping inertia.\n",
+                                       current_velocity, inertia_stop_threshold);
+                stop_inertia(); // Resets velocity, active flag, etc. (already under mutex)
+                should_emit_event = false; // Don't emit event on the frame we stop
+                // Gesture end signal is handled below based on state_changed_this_cycle
+            }
+        } // end if(inertia_active)
+
+        // Store necessary state before releasing mutex if event emission is needed
+        // End gesture if inertia stopped this cycle
+        bool should_end_gesture = use_multitouch && !inertia_active && state_changed_this_cycle;
+        pthread_mutex_unlock(&state_mutex);
+
+        // --- 3. Emit Event / End Gesture (outside mutex lock) ---
+        // Removed boundary reset action block - handled in emitter
+
+        if (should_emit_event && event_val_to_emit != 0) {
+             if (debug_mode > 1) printf("InertiaThread: Emitting event value %d\n", event_val_to_emit);
+             if (use_multitouch) {
+                 // emit_two_finger_scroll_event should NOT access shared state now
+                 if (emit_two_finger_scroll_event(event_val_to_emit) < 0) {
+                     fprintf(stderr, "InertiaThread: Failed to emit multitouch scroll event.\n");
+                     // Optionally signal stop on error? Be careful of loops.
+                     // signal_stop_request();
+                 }
+             } else {
+                 if (emit_scroll_event(event_val_to_emit) < 0) {
+                     fprintf(stderr, "InertiaThread: Failed to emit scroll event.\n");
+                     // signal_stop_request();
+                 }
+             }
         }
-        
-        if (emit_two_finger_scroll_event(event_val) < 0) {
-            fprintf(stderr, "Failed to emit multitouch scroll event in inertia processing.\n");
-            stop_inertia();
-            return;
+
+        if (should_end_gesture) {
+             end_multitouch_gesture(); // Call outside lock
         }
+
+        // --- 4. Sleep if Idle ---
+        // If no state changed and inertia isn't active, sleep a bit longer
+        pthread_mutex_lock(&state_mutex);
+        bool is_active = inertia_active;
+        pthread_mutex_unlock(&state_mutex);
+        if (!state_changed_this_cycle && !is_active) {
+             usleep(20000); // Sleep 20ms if completely idle
+        } else if (!state_changed_this_cycle && is_active) {
+             // If inertia is active but no input/signals, rely on timedwait timeout
+             // or add a very small sleep if timedwait is too long
+             usleep(1000); // Optional 1ms sleep during active inertia
+        }
+
+    } // end while(running)
+
+    printf("Inertia thread exiting.\n");
+    // Ensure any final gesture is ended if multitouch was used and active
+    pthread_mutex_lock(&state_mutex);
+    bool final_gesture_end = use_multitouch && inertia_active;
+    pthread_mutex_unlock(&state_mutex);
+    if (final_gesture_end) {
+         end_multitouch_gesture();
     }
-    
-    // Maintain ~60 FPS
-    usleep(16000);
+    return NULL;
 }

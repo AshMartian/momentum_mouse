@@ -1,3 +1,11 @@
+momentum-mouse (1.0.0) stable; urgency=medium
+
+  * Multi-threaded seperation of input and trackpad events
+  * Adjusted physics, sensitivity is more sensitive
+  * GUI Now allows 10 max velocity
+
+ -- Ash Martian <dev@ashmartian.com> Mon, 1 Apr 2025 00:31 +0000
+
 momentum-mouse (0.5.0) unstable; urgency=medium
 
   * New setting for virtual trackpad resolution

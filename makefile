@@ -44,7 +44,7 @@ clean:
 	rm -f $(OBJS) $(TARGET)
 
 test_inertia: src/test_inertia.c src/inertia_logic.o
-	$(CC) $(CFLAGS) -Iinclude -o test_inertia src/test_inertia.c src/inertia_logic.o -lm
+	$(CC) $(CFLAGS) -Iinclude -o test_inertia src/test_inertia.c src/inertia_logic.o -lm -lpthread
 
 tests: test_inertia
 	./test_inertia

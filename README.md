@@ -44,6 +44,7 @@ Instead of content jumping in fixed increments, it glides naturally with momentu
 - **Horizontal Scrolling Support**: Works with both vertical and horizontal scrolling
 - **Configurable Physics**: Adjust sensitivity, friction, and velocity to match your preferences
 - **System Integration**: Runs as a background service with minimal resource usage
+- **Multi-threaded Architecture**: Separates input capture and physics processing for responsiveness
 - **Auto-detection**: Automatically detects your system's scroll direction settings
 
 ## Usage
@@ -58,10 +59,10 @@ Instead of content jumping in fixed increments, it glides naturally with momentu
 
 ```bash
 # Download the latest .deb package
-wget https://github.com/AshMartian/momentum_mouse/releases/latest/download/momentum-mouse_0.5.0_amd64.deb
+wget https://github.com/AshMartian/momentum_mouse/releases/latest/download/momentum-mouse_1.0.0_amd64.deb
 
 # Install the package
-sudo dpkg -i momentum-mouse_0.5.0_amd64.deb
+sudo dpkg -i momentum-mouse_1.0.0_amd64.deb
 
 # Install dependencies if needed
 sudo apt-get install -f
@@ -90,6 +91,15 @@ sudo make install
 
 # Start the service
 sudo systemctl start momentum_mouse.service
+```
+
+### Building a .deb
+
+```bash
+dpkg-buildpackage -us -uc -b
+
+
+sudo dpkg -i ../momentum-mouse_1.0.0_amd64.deb
 ```
 
 ## Configuration
@@ -135,6 +145,9 @@ friction=2.0
 
 # Maximum velocity factor (default: 0.8)
 max_velocity=0.8
+
+# Velocity threshold below which inertia stops (default: 1.0)
+inertia_stop_threshold=1.0
 ```
 
 After updating your configuration, run `sudo systemctl restart momentum_mouse.service`
@@ -161,10 +174,36 @@ Options:
                               Lower values make scrolling last longer
   --max-velocity=VALUE        Set maximum velocity as screen factor (default: 0.8)
                               Higher values allow faster scrolling
+  --inertia-stop-threshold=VALUE Set velocity threshold below which inertia stops (default: 1.0)
+                              Higher values allow inertia to continue at lower speeds
   --daemon                    Run as a background daemon
 
 If DEVICE_PATH is provided, use that input device instead of auto-detecting
 ```
+
+## How It Works
+
+Momentum Mouse employs a multi-threaded architecture to ensure smooth performance and responsiveness:
+
+1.  **Input Capture Thread**:
+
+    - Uses `libevdev` to listen for events directly from the specified mouse device (or an auto-detected one).
+    - If `grab_device` is enabled, it attempts to exclusively grab the device to prevent the original scroll events from reaching the desktop environment.
+    - Filters incoming events:
+      - Scroll wheel events (`REL_WHEEL` or `REL_HWHEEL`) are captured, and their delta values are placed into a thread-safe queue.
+      - Mouse movement events (`REL_X`, `REL_Y`) trigger a friction signal if `mouse_move_drag` is enabled.
+      - Mouse clicks or Escape key presses trigger a stop signal.
+    - Other events are passed through to the system via a virtual uinput device (`emit_passthrough_event`).
+
+2.  **Inertia Processing Thread**:
+    - Waits for scroll deltas in the queue or signals (stop, friction) using condition variables.
+    - When scroll deltas arrive, it updates the current scrolling `velocity` and `position` based on the configured sensitivity, multiplier, and timing between events (`update_inertia`).
+    - Continuously calculates the effect of friction over time, reducing the `velocity`.
+    - Applies additional friction if a mouse movement signal is received.
+    - Stops inertia immediately if a stop signal is received or if the velocity drops below a threshold.
+    - Based on the calculated velocity and position changes, it emits virtual events:
+      - **Multitouch Mode (Default)**: Simulates two-finger touchpad movements (`emit_two_finger_scroll_event`) on a virtual uinput touchpad device. This provides the smoothest experience on most modern desktops. It includes logic to handle screen boundaries by "jumping" the virtual fingers.
+      - **Wheel Event Mode (`--no-multitouch`)**: Emits traditional `REL_WHEEL` or `REL_HWHEEL` events (`emit_scroll_event`) on a virtual uinput mouse device.
 
 ## Troubleshooting
 

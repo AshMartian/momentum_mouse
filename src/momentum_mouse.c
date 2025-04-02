@@ -22,11 +22,56 @@ double scroll_sensitivity = 1.0;  // Default sensitivity
 double scroll_multiplier = 1.0;   // Default multiplier
 double scroll_friction = 2.0;     // Default friction
 double max_velocity_factor = 0.8; // Default max velocity (80% of screen dimension)
-double sensitivity_divisor = 3; // Default sensitivity divisor
+double sensitivity_divisor = 0.3; // Default sensitivity divisor
 double resolution_multiplier = 10.0; // Default resolution multiplier
 int refresh_rate = 200; // Default refresh rate (200 Hz)
+double inertia_stop_threshold = 1.0; // Default stop threshold
 const char *config_file_override = NULL;  // Config file override path
 char *device_override = NULL;  // Device path override
+
+// Global flag for signal handling and thread control
+volatile sig_atomic_t running = 1; // Initialized here
+
+// Shared scroll queue
+ScrollQueue scroll_queue; // Defined in momentum_mouse.c
+
+// Mutex for protecting inertia state and signals
+pthread_mutex_t state_mutex;
+// Condition variable for state changes
+pthread_cond_t state_cond;
+
+// Flags for communication between threads (protected by state_mutex)
+bool stop_requested = false;
+int pending_friction_magnitude = 0;
+
+// Thread IDs
+pthread_t input_thread_id;
+pthread_t inertia_thread_id;
+
+// Signal handler function
+void handle_signal(int signal) {
+    if (signal == SIGINT || signal == SIGTERM) {
+        debug_log("\nSignal %d received, stopping...\n", signal);
+        running = 0; // Set the global flag to signal threads to stop
+
+        // Signal the inertia thread to wake up if it's waiting on the scroll queue condition
+        pthread_mutex_lock(&scroll_queue.mutex);
+        pthread_cond_signal(&scroll_queue.cond);
+        pthread_mutex_unlock(&scroll_queue.mutex);
+
+        // Signal the inertia thread again if it's waiting on the state condition
+        pthread_mutex_lock(&state_mutex);
+        pthread_cond_signal(&state_cond);
+        pthread_mutex_unlock(&state_mutex);
+
+
+        // Signal the input thread (if it's blocked on select) - This is harder,
+        // select might need a self-pipe trick or similar to interrupt cleanly.
+        // For now, rely on the running flag check after select timeout/event.
+        // Input thread also checks 'running' flag periodically.
+    }
+}
+
 
 // Implementation of debug_log function
 void debug_log(const char *format, ...) {
@@ -72,12 +117,14 @@ int main(int argc, char *argv[]) {
             printf("                              Lower values make scrolling last longer\n");
             printf("  --max-velocity=VALUE        Set maximum velocity as screen factor (default: 0.8)\n");
             printf("                              Higher values allow faster scrolling\n");
-            printf("  --sensitivity-divisor=VALUE Set divisor for touchpad sensitivity (default: 2.5)\n");
+            printf("  --sensitivity-divisor=VALUE Set divisor for touchpad sensitivity (default: 0.3)\n");
             printf("                              Higher values reduce sensitivity for touchpads\n");
             printf("  --resolution-multiplier=VALUE Set resolution multiplier for virtual trackpad (default: 10.0)\n");
             printf("                              Higher values increase precision but may cause issues\n");
             printf("  --refresh-rate=VALUE         Set refresh rate in Hz for inertia updates (default: 200)\n");
             printf("                              Lower values reduce CPU usage but may feel less smooth\n");
+            printf("  --inertia-stop-threshold=VALUE Set velocity threshold below which inertia stops (default: 1.0)\n");
+            printf("                              Higher values allow inertia to continue at lower speeds\n");
             printf("  --mouse-move-drag           Enable slowing down scrolling when mouse moves (default)\n");
             printf("  --no-mouse-move-drag        Disable slowing down scrolling when mouse moves\n");
             printf("  --config=PATH               Use the specified config file\n");
@@ -205,6 +252,15 @@ int main(int argc, char *argv[]) {
                 fprintf(stderr, "Invalid refresh rate: %s\n", argv[i] + 15);
                 fprintf(stderr, "Using default refresh rate: 200\n");
             }
+        } else if (strncmp(argv[i], "--inertia-stop-threshold=", 27) == 0) {
+            // Parse inertia stop threshold
+            double value = atof(argv[i] + 27);
+            if (value >= 0.0) { // Allow 0
+                inertia_stop_threshold = value;
+            } else {
+                fprintf(stderr, "Invalid inertia stop threshold: %s\n", argv[i] + 27);
+                fprintf(stderr, "Using default inertia stop threshold: 1.0\n");
+            }
         } else if (strcmp(argv[i], "--mouse-move-drag") == 0) {
             mouse_move_drag = 1;
         } else if (strcmp(argv[i], "--no-mouse-move-drag") == 0) {
@@ -237,10 +293,12 @@ int main(int argc, char *argv[]) {
            scroll_direction == SCROLL_DIRECTION_NATURAL ? "natural" : "traditional",
            scroll_axis == SCROLL_AXIS_HORIZONTAL ? "horizontal" : "vertical",
            debug_mode ? "enabled" : "disabled");
-    debug_log("Sensitivity: %.2f, Multiplier: %.2f, Friction: %.2f, Divisor: %.2f\n", 
-           scroll_sensitivity, scroll_multiplier, scroll_friction, sensitivity_divisor);
-    
-    // Initialize the virtual device based on the mode first
+   debug_log("Sensitivity: %.2f, Multiplier: %.2f, Friction: %.2f, Divisor: %.2f\n",
+          scroll_sensitivity, scroll_multiplier, scroll_friction, sensitivity_divisor);
+   debug_log("Max Velocity: %.2f, Refresh Rate: %d, Stop Threshold: %.2f\n",
+          max_velocity_factor, refresh_rate, inertia_stop_threshold);
+
+   // Initialize the virtual device based on the mode first
     if (use_multitouch) {
         if (setup_virtual_multitouch_device() < 0) {
             fprintf(stderr, "Failed to set up virtual multitouch device.\n");
@@ -264,21 +322,93 @@ int main(int argc, char *argv[]) {
         }
         return 1;
     }
-    
-    debug_log("momentum mouse running. Scroll your mouse wheel!\n");
-    
-    while (1) {
-        capture_input_event();
-        // Process inertia:
-        if (use_multitouch) {
-            process_inertia_mt();
-        } else {
-            process_inertia();
-        }
-        usleep(1000000 / refresh_rate); // Convert Hz to microseconds
+    // --- Initialize Synchronization Primitives ---
+    debug_log("Initializing synchronization primitives...\n");
+    memset(&scroll_queue, 0, sizeof(scroll_queue));
+    if (pthread_mutex_init(&scroll_queue.mutex, NULL) != 0) {
+        perror("Scroll queue mutex init failed"); /* Add cleanup before return */ return 1;
     }
-    
-    // Clean up resources
+    if (pthread_cond_init(&scroll_queue.cond, NULL) != 0) {
+        perror("Scroll queue cond init failed"); pthread_mutex_destroy(&scroll_queue.mutex); return 1;
+    }
+    if (pthread_mutex_init(&state_mutex, NULL) != 0) {
+        perror("State mutex init failed"); pthread_cond_destroy(&scroll_queue.cond); pthread_mutex_destroy(&scroll_queue.mutex); return 1;
+    }
+    if (pthread_cond_init(&state_cond, NULL) != 0) {
+        perror("State cond init failed"); pthread_mutex_destroy(&state_mutex); pthread_cond_destroy(&scroll_queue.cond); pthread_mutex_destroy(&scroll_queue.mutex); return 1;
+    }
+    // --- End Initialization ---
+
+    // --- Setup Signal Handling ---
+    // Signal handler function is now defined at file scope.
+    // We just need to register it here.
+
+    debug_log("Setting up signal handlers...\n");
+    struct sigaction sa;
+    memset(&sa, 0, sizeof(sa));
+    sa.sa_handler = handle_signal;
+    sigaction(SIGINT, &sa, NULL);  // Handle Ctrl+C
+    sigaction(SIGTERM, &sa, NULL); // Handle termination signals
+    // --- End Signal Handling ---
+
+    debug_log("momentum mouse running. Scroll your mouse wheel!\n"); // Keep this log
+
+    // --- Create Threads ---
+    // Thread IDs
+    pthread_t input_thread_id;
+    pthread_t inertia_thread_id;
+
+    debug_log("Starting threads...\n");
+    if (pthread_create(&input_thread_id, NULL, input_thread_func, NULL) != 0) {
+        perror("Error creating input thread");
+        // Perform cleanup before exiting
+        cleanup_input_capture();
+        if (use_multitouch) destroy_virtual_multitouch_device(); else destroy_virtual_device();
+        pthread_mutex_destroy(&scroll_queue.mutex);
+        pthread_cond_destroy(&scroll_queue.cond);
+        pthread_mutex_destroy(&state_mutex);
+        pthread_cond_destroy(&state_cond);
+        return 1;
+    }
+    if (pthread_create(&inertia_thread_id, NULL, inertia_thread_func, NULL) != 0) {
+        perror("Error creating inertia thread");
+        // Signal input thread to stop, join it, perform cleanup
+        running = 0; // Signal input thread
+        debug_log("Waiting for input thread to exit after inertia thread creation failure...\n");
+        pthread_join(input_thread_id, NULL); // Wait for input thread to stop
+        cleanup_input_capture();
+        if (use_multitouch) destroy_virtual_multitouch_device(); else destroy_virtual_device();
+        pthread_mutex_destroy(&scroll_queue.mutex);
+        pthread_cond_destroy(&scroll_queue.cond);
+        pthread_mutex_destroy(&state_mutex);
+        pthread_cond_destroy(&state_cond);
+        return 1;
+    }
+    debug_log("Threads started successfully.\n");
+    // --- End Thread Creation ---
+
+    // --- Wait for Threads to Complete ---
+    debug_log("Main thread waiting for worker threads to finish...\n");
+
+    // Join inertia thread first
+    if (pthread_join(inertia_thread_id, NULL) != 0) {
+         perror("Error joining inertia thread");
+    } else {
+         debug_log("Inertia thread joined.\n");
+    }
+
+    // Join input thread
+    if (pthread_join(input_thread_id, NULL) != 0) {
+         perror("Error joining input thread");
+    } else {
+         debug_log("Input thread joined.\n");
+    }
+
+    debug_log("All worker threads finished.\n");
+    // --- End Thread Joining ---
+
+    // --- Cleanup ---
+    // The existing cleanup calls should remain after this block
     cleanup_input_capture();
     if (use_multitouch) {
         destroy_virtual_multitouch_device();
@@ -291,5 +421,13 @@ int main(int argc, char *argv[]) {
         closelog();
     }
     
+    // Add cleanup for mutexes and condition variables (BEFORE the final return 0)
+    debug_log("Destroying synchronization primitives...\n");
+    pthread_mutex_destroy(&scroll_queue.mutex);
+    pthread_cond_destroy(&scroll_queue.cond);
+    pthread_mutex_destroy(&state_mutex);
+    pthread_cond_destroy(&state_cond);
+    // --- End Cleanup ---
+
     return 0;
 }
