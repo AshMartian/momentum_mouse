@@ -1,3 +1,4 @@
+%global debug_package %{nil}
 Name:           momentum_mouse
 Version:        1.0.0
 Release:        1%{?dist}
@@ -38,12 +39,14 @@ make install DESTDIR=$RPM_BUILD_ROOT prefix=/usr sysconfdir=/etc systemddir=%{_u
 
 %files
 %{_bindir}/momentum_mouse
+%{_bindir}/momentum_mouse_window_listener
 %{_bindir}/momentum_mouse_gui
 %{_bindir}/momentum_mouse_gui_launcher
 %config(noreplace) /etc/momentum_mouse.conf
 %{_unitdir}/momentum_mouse.service
 /usr/share/polkit-1/actions/org.momentum_mouse.gui.policy
 /usr/share/applications/momentum_mouse_gui.desktop
+/etc/xdg/autostart/momentum_mouse_listener.desktop
 /usr/share/icons/hicolor/256x256/apps/momentum_mouse.png
 
 %post
