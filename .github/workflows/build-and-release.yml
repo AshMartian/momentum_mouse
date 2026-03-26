@@ -1,4 +1,4 @@
-name: Build and Release Debian Package
+name: Build and Release Packages
 
 on:
   push:
@@ -7,25 +7,17 @@ on:
   workflow_dispatch: # Allow manual triggering
 
 jobs:
-  build:
+  build-deb:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Install build dependencies
         run: sudo ./setup.sh
 
       - name: Build Debian package
         run: |
-          # Update version in debian/changelog if needed
-          VERSION=$(echo ${{ github.ref_name }} | sed 's/^v//')
-          if [[ "${{ github.ref_type }}" == "tag" && "$VERSION" != "" ]]; then
-            # If triggered by a tag, use the tag version
-            dch -v "$VERSION" "Release version $VERSION" --distribution unstable
-          fi
-
           # Build the package
           dpkg-buildpackage -us -uc -b
 
@@ -39,12 +31,62 @@ jobs:
           name: debian-package
           path: artifacts/*.deb
 
+  build-rpm:
+    runs-on: ubuntu-latest
+    container: fedora:latest
+    steps:
+      - name: Install basic tools
+        run: dnf install -y git tar findutils
+        
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: ./setup.sh
+
+      - name: Prepare and Build RPM package
+        run: |
+          # Determine version
+          VERSION=$(grep "Version:" momentum_mouse.spec | awk '{print $2}')
+          
+          # Setup rpmbuild tree
+          rpmdev-setuptree
+          
+          # Create source tarball matching the spec file requirements
+          mkdir -p ~/momentum_mouse-$VERSION
+          cp -r . ~/momentum_mouse-$VERSION/
+          tar -czvf ~/rpmbuild/SOURCES/momentum_mouse-$VERSION.tar.gz -C ~ momentum_mouse-$VERSION
+          cp momentum_mouse.spec ~/rpmbuild/SPECS/
+          
+          # Build RPM
+          rpmbuild -ba ~/rpmbuild/SPECS/momentum_mouse.spec
+          
+          # Move artifacts
+          mkdir -p artifacts
+          cp ~/rpmbuild/RPMS/x86_64/momentum_mouse-*.rpm artifacts/
+
+      - name: Upload RPM package as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rpm-package
+          path: artifacts/*.rpm
+
+  release:
+    needs: [build-deb, build-rpm]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
       - name: Create Release
-        if: startsWith(github.ref, 'refs/tags/')
-        id: create_release
         uses: softprops/action-gh-release@v1
         with:
-          files: artifacts/*.deb
+          files: |
+            artifacts/debian-package/*.deb
+            artifacts/rpm-package/*.rpm
           draft: false
           prerelease: false
           generate_release_notes: true

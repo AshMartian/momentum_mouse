@@ -55,6 +55,16 @@ Instead of content jumping in fixed increments, it glides naturally with momentu
 
 ## Installation
 
+### From RPM Package (Fedora)
+
+```bash
+# Enable the repository (if hosted on COPR) or download the .rpm manually
+# sudo dnf copr enable ashmartian/momentum_mouse
+# sudo dnf install momentum_mouse
+
+# Or build the RPM locally (see below)
+```
+
 ### From Debian Package (.deb)
 
 ```bash
@@ -73,25 +83,34 @@ sudo apt-get install -f
 ### Building from Source
 
 ```bash
-
 # Clone the repository
 git clone https://github.com/AshMartian/momentum_mouse.git
-cd momentum-mouse
+cd momentum_mouse
 
-# Install dependencies
-sudo ./setup.sh
+# Install dependencies (runs setup.sh)
+make setup
 
 # Build the project
 make
 
+# Test the binary
 sudo ./momentum_mouse -h
 
-# Install (optional)
+# Install system-wide
 sudo make install
 
-# Start the service
-sudo systemctl start momentum_mouse.service
+# Start the background service
+sudo systemctl enable --now momentum_mouse.service
 ```
+
+#### Make Commands Reference
+
+- `make setup`: Installs necessary dependencies using your package manager (requires `sudo`)
+- `make` (or `make all`): Compiles the `momentum_mouse` binary and the GUI component
+- `make clean`: Removes compiled binary and object files
+- `make tests`: Compiles and runs the inertia logic tests
+- `make install`: Installs the binaries, systemd service, polkit rules, and configurations to your system (requires `sudo`)
+- `make uninstall`: Removes all installed files from your system
 
 ### Building a .deb
 
@@ -100,6 +119,20 @@ dpkg-buildpackage -us -uc -b
 
 
 sudo dpkg -i ../momentum-mouse_1.0.0_amd64.deb
+```
+
+### Building an RPM (.rpm) for Fedora
+
+```bash
+# Ensure rpm-build rpm-devel etc are installed via setup script or directly
+rpmdev-setuptree
+
+# Ensure your directory is named momentum_mouse-1.0.0
+# From the parent directory of momentum_mouse-1.0.0
+tar -czvf ~/rpmbuild/SOURCES/momentum_mouse-1.0.0.tar.gz momentum_mouse-1.0.0
+
+# Build
+rpmbuild -ba momentum_mouse-1.0.0/momentum_mouse.spec
 ```
 
 ## Configuration
