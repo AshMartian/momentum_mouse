@@ -4,6 +4,7 @@
 momentum_mouse-prev
 momentum_mouse
 momentum_mouse_gui
+momentum_mouse_window_listener
 *.log
 *.sub*
 .debhelper

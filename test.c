@@ -1,0 +1,1 @@
+static gboolean check_listener_running() { gchar *out=NULL; gint status=-1; if(g_spawn_command_line_sync("pgrep -f momentum_mouse_window_listener", &out, NULL, &status, NULL)) { gboolean ret = (status == 0); g_free(out); return ret; } return FALSE; }

@@ -120,6 +120,86 @@ static void set_gnome_natural_scrolling(gboolean natural) {
     g_free(command);
 }
 
+static void on_stop_services_clicked(GtkWidget *widget, gpointer data) {
+    (void)data;
+    
+    // Stop systemd service
+    g_spawn_command_line_sync("systemctl stop momentum_mouse.service", NULL, NULL, NULL, NULL);
+    // Stop listener
+    g_spawn_command_line_sync("pkill -f momentum_mouse_window_listener", NULL, NULL, NULL, NULL);
+
+    // Show a notification
+    GtkWidget *parent_window = gtk_widget_get_toplevel(widget);
+    if (!gtk_widget_is_toplevel(parent_window)) {
+        parent_window = NULL;
+    }
+    
+    if (parent_window) {
+        GtkWidget *dialog = gtk_message_dialog_new(GTK_WINDOW(parent_window),
+            GTK_DIALOG_MODAL | GTK_DIALOG_DESTROY_WITH_PARENT,
+            GTK_MESSAGE_INFO, GTK_BUTTONS_OK,
+            "Services Stopped");
+        gtk_message_dialog_format_secondary_text(GTK_MESSAGE_DIALOG(dialog),
+            "Both momentum_mouse and the window listener have been stopped.");
+        gtk_dialog_run(GTK_DIALOG(dialog));
+        gtk_widget_destroy(dialog);
+    }
+}
+
+static void on_cancel_clicked(GtkWidget *widget, gpointer data) {
+    (void)widget;
+    GtkWidget **widgets = (GtkWidget **)data;
+    GKeyFile *config = load_config();
+    
+    gdouble sens = g_key_file_get_double(config, CONFIG_GROUP, "sensitivity", NULL);
+    if (sens == 0) sens = DEFAULT_SENSITIVITY;
+    gtk_range_set_value(GTK_RANGE(widgets[0]), sens);
+    
+    gdouble mult = g_key_file_get_double(config, CONFIG_GROUP, "multiplier", NULL);
+    if (mult == 0) mult = DEFAULT_MULTIPLIER;
+    gtk_range_set_value(GTK_RANGE(widgets[1]), mult);
+    
+    gdouble fric = g_key_file_get_double(config, CONFIG_GROUP, "friction", NULL);
+    if (fric == 0) fric = DEFAULT_FRICTION;
+    gtk_range_set_value(GTK_RANGE(widgets[2]), fric);
+    
+    gdouble vel = g_key_file_get_double(config, CONFIG_GROUP, "max_velocity", NULL);
+    if (vel == 0) vel = DEFAULT_MAX_VELOCITY;
+    gtk_range_set_value(GTK_RANGE(widgets[3]), vel);
+    
+    gboolean nat = g_key_file_has_key(config, CONFIG_GROUP, "natural", NULL) ? g_key_file_get_boolean(config, CONFIG_GROUP, "natural", NULL) : detect_gnome_natural_scrolling();
+    gtk_switch_set_active(GTK_SWITCH(widgets[4]), nat);
+    
+    gboolean grab = g_key_file_has_key(config, CONFIG_GROUP, "grab", NULL) ? g_key_file_get_boolean(config, CONFIG_GROUP, "grab", NULL) : TRUE;
+    gtk_switch_set_active(GTK_SWITCH(widgets[5]), grab);
+    
+    gboolean drag = g_key_file_has_key(config, CONFIG_GROUP, "mouse_move_drag", NULL) ? g_key_file_get_boolean(config, CONFIG_GROUP, "mouse_move_drag", NULL) : TRUE;
+    gtk_switch_set_active(GTK_SWITCH(widgets[7]), drag);
+    
+    gdouble res = g_key_file_get_double(config, CONFIG_GROUP, "resolution_multiplier", NULL);
+    if (res == 0) res = 10.0;
+    gtk_range_set_value(GTK_RANGE(widgets[8]), res);
+    
+    gint rate = g_key_file_get_integer(config, CONFIG_GROUP, "refresh_rate", NULL);
+    if (rate == 0) rate = 200;
+    gtk_range_set_value(GTK_RANGE(widgets[9]), rate);
+    
+    gdouble stop = g_key_file_get_double(config, CONFIG_GROUP, "inertia_stop_threshold", NULL);
+    if (stop == 0) stop = DEFAULT_INERTIA_STOP_THRESHOLD;
+    gtk_range_set_value(GTK_RANGE(widgets[10]), stop);
+    
+    gboolean multi = g_key_file_has_key(config, CONFIG_GROUP, "multitouch", NULL) ? g_key_file_get_boolean(config, CONFIG_GROUP, "multitouch", NULL) : TRUE;
+    gtk_switch_set_active(GTK_SWITCH(widgets[11]), multi);
+    
+    gboolean horiz = g_key_file_has_key(config, CONFIG_GROUP, "horizontal", NULL) ? g_key_file_get_boolean(config, CONFIG_GROUP, "horizontal", NULL) : FALSE;
+    gtk_switch_set_active(GTK_SWITCH(widgets[12]), horiz);
+    
+    gboolean debug = g_key_file_has_key(config, CONFIG_GROUP, "debug", NULL) ? g_key_file_get_boolean(config, CONFIG_GROUP, "debug", NULL) : FALSE;
+    gtk_switch_set_active(GTK_SWITCH(widgets[13]), debug);
+    
+    g_key_file_free(config);
+}
+
 // Function to handle apply button click
 static void on_apply_clicked(GtkWidget *widget, gpointer data) {
     (void)widget; // Suppress unused parameter warning
@@ -280,6 +360,263 @@ static void save_config(GKeyFile *key_file, GtkWidget *parent) {
     }
 }
 
+static gboolean check_listener_running(void) {
+    gchar *out = NULL;
+    gint status = -1;
+    if (g_spawn_command_line_sync("pgrep -f momentum_mouse_window_listener", &out, NULL, &status, NULL)) {
+        gboolean running = (status == 0);
+        g_free(out);
+        return running;
+    }
+    return FALSE;
+}
+
+static void update_listener_status_ui(GtkWidget *status_label) {
+    if (!status_label || !GTK_IS_LABEL(status_label)) return;
+    if (check_listener_running()) {
+        gtk_label_set_markup(GTK_LABEL(status_label), "<b><span foreground='green'>Running</span></b>");
+    } else {
+        gtk_label_set_markup(GTK_LABEL(status_label), "<b><span foreground='red'>Disconnected</span></b>");
+    }
+}
+
+static void on_restart_listener_clicked(GtkWidget *widget, gpointer data) {
+    (void)widget;
+    GtkWidget *status_label = GTK_WIDGET(data);
+    
+    // Attempt kill
+    g_spawn_command_line_sync("pkill -f momentum_mouse_window_listener", NULL, NULL, NULL, NULL);
+    g_usleep(500000);
+    
+    const gchar *sudo_user = g_getenv("SUDO_USER");
+    if (!sudo_user) sudo_user = g_getenv("PKEXEC_UID");
+    
+    gchar *cmd = NULL;
+    if (sudo_user) {
+        // Find PID of user's session process to extract environment
+        gchar *pid_out = NULL;
+        gchar *pgrep_cmd = g_strdup_printf("pgrep -u %s -n gnome-shell || pgrep -u %s -n plasma || pgrep -u %s -n dbus-daemon", sudo_user, sudo_user, sudo_user);
+        g_spawn_command_line_sync(pgrep_cmd, &pid_out, NULL, NULL, NULL);
+        g_free(pgrep_cmd);
+        
+        if (pid_out && strlen(pid_out) > 0) {
+            int pid = atoi(pid_out);
+            cmd = g_strdup_printf("su - %s -c 'env $(tr \"\\0\" \"\\n\" < /proc/%d/environ | grep -E \"^(DISPLAY|WAYLAND_DISPLAY|DBUS_SESSION_BUS_ADDRESS|XDG_RUNTIME_DIR|XAUTHORITY|AT_SPI_BUS_ADDRESS)=\") nohup momentum_mouse_window_listener >/tmp/momentum_mouse_listener.log 2>&1 &'", sudo_user, pid);
+        } else {
+            cmd = g_strdup_printf("su - %s -c 'nohup momentum_mouse_window_listener >/tmp/momentum_mouse_listener.log 2>&1 &'", sudo_user);
+        }
+        g_free(pid_out);
+    } else {
+        cmd = g_strdup("nohup momentum_mouse_window_listener >/tmp/momentum_mouse_listener.log 2>&1 &");
+    }
+    
+    g_spawn_command_line_async(cmd, NULL);
+    g_free(cmd);
+    
+    // Give it more time to potentially throw an error and log it
+    g_usleep(800000); 
+    update_listener_status_ui(status_label);
+
+    if (!check_listener_running()) {
+        GtkWidget *parent_window = gtk_widget_get_toplevel(widget);
+        if (!gtk_widget_is_toplevel(parent_window)) parent_window = NULL;
+        if (parent_window) {
+            GtkWidget *dialog = gtk_message_dialog_new(GTK_WINDOW(parent_window),
+                GTK_DIALOG_MODAL | GTK_DIALOG_DESTROY_WITH_PARENT,
+                GTK_MESSAGE_ERROR, GTK_BUTTONS_OK,
+                "Failed to start User Scope Window Listener");
+            gtk_message_dialog_format_secondary_text(GTK_MESSAGE_DIALOG(dialog),
+                "The listener tracks newly focused apps but requires your user's desktop environment variables to connect. "
+                "Check the logs at /tmp/momentum_mouse_listener.log.\n\n"
+                "If it fails to connect, try running this manually in your normal terminal (not as root):\n\n"
+                "    momentum_mouse_window_listener");
+            gtk_dialog_run(GTK_DIALOG(dialog));
+            gtk_widget_destroy(dialog);
+        }
+    }
+}
+
+static gboolean on_status_timer(gpointer data) {
+    GtkWidget *status_label = GTK_WIDGET(data);
+    update_listener_status_ui(status_label);
+    return G_SOURCE_CONTINUE;
+}
+
+static gint compare_app_info(GtkListBoxRow *row1, GtkListBoxRow *row2, gpointer user_data) {
+    (void)user_data;
+    if (GTK_IS_WIDGET(row1) && GTK_IS_WIDGET(row2)) {
+        GtkWidget *box_a = gtk_bin_get_child(GTK_BIN(row1));
+        GList *children_a = gtk_container_get_children(GTK_CONTAINER(box_a));
+        const gchar *name_a = "";
+        for (GList *l = children_a; l != NULL; l = l->next) {
+            if (GTK_IS_LABEL(l->data)) { name_a = gtk_label_get_text(GTK_LABEL(l->data)); break; }
+        }
+        g_list_free(children_a);
+
+        GtkWidget *box_b = gtk_bin_get_child(GTK_BIN(row2));
+        GList *children_b = gtk_container_get_children(GTK_CONTAINER(box_b));
+        const gchar *name_b = "";
+        for (GList *l = children_b; l != NULL; l = l->next) {
+            if (GTK_IS_LABEL(l->data)) { name_b = gtk_label_get_text(GTK_LABEL(l->data)); break; }
+        }
+        g_list_free(children_b);
+
+        return g_utf8_collate(name_a, name_b);
+    }
+    return 0;
+}
+
+static void add_exclusion_row(GtkWidget *list_box, const char *display_name, const char *app_id, const char *current_exclusions, GIcon *icon) {
+    GtkWidget *row = gtk_list_box_row_new();
+    GtkWidget *box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
+    gtk_widget_set_margin_start(box, 10);
+    gtk_widget_set_margin_end(box, 10);
+    gtk_widget_set_margin_top(box, 5);
+    gtk_widget_set_margin_bottom(box, 5);
+    
+    if (icon) {
+        GtkWidget *image = gtk_image_new_from_gicon(icon, GTK_ICON_SIZE_LARGE_TOOLBAR);
+        gtk_box_pack_start(GTK_BOX(box), image, FALSE, FALSE, 0);
+    } else {
+        GtkWidget *image = gtk_image_new_from_icon_name("application-x-executable", GTK_ICON_SIZE_LARGE_TOOLBAR);
+        gtk_box_pack_start(GTK_BOX(box), image, FALSE, FALSE, 0);
+    }
+    
+    GtkWidget *name_label = gtk_label_new(display_name);
+    gtk_widget_set_halign(name_label, GTK_ALIGN_START);
+    gtk_box_pack_start(GTK_BOX(box), name_label, TRUE, TRUE, 0);
+    
+    GtkWidget *check = gtk_check_button_new();
+    g_object_set_data_full(G_OBJECT(check), "app_id", g_strdup(app_id), g_free);
+    
+    if (current_exclusions && strstr(current_exclusions, app_id)) {
+        gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(check), TRUE);
+    }
+    
+    gtk_box_pack_start(GTK_BOX(box), check, FALSE, FALSE, 0);
+    gtk_container_add(GTK_CONTAINER(row), box);
+    gtk_container_add(GTK_CONTAINER(list_box), row);
+}
+
+static void on_manage_exclusions_clicked(GtkWidget *widget, gpointer data) {
+    (void)data;
+    GtkWidget *parent_window = gtk_widget_get_toplevel(widget);
+    GtkWidget *dialog = gtk_dialog_new_with_buttons("Manage App Exclusions",
+        GTK_WINDOW(parent_window),
+        GTK_DIALOG_MODAL | GTK_DIALOG_DESTROY_WITH_PARENT,
+        "Cancel", GTK_RESPONSE_CANCEL,
+        "Save", GTK_RESPONSE_ACCEPT,
+        NULL);
+        
+    gtk_window_set_default_size(GTK_WINDOW(dialog), 450, 600);
+    GtkWidget *content_area = gtk_dialog_get_content_area(GTK_DIALOG(dialog));
+    
+    GtkWidget *label = gtk_label_new("Check applications to disable momentum scrolling when they are focused.\nNote: Background tracking requires the window listener to be running.");
+    gtk_label_set_line_wrap(GTK_LABEL(label), TRUE);
+    gtk_box_pack_start(GTK_BOX(content_area), label, FALSE, FALSE, 10);
+    
+    GtkWidget *scrolled = gtk_scrolled_window_new(NULL, NULL);
+    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scrolled), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
+    gtk_widget_set_vexpand(scrolled, TRUE);
+    gtk_box_pack_start(GTK_BOX(content_area), scrolled, TRUE, TRUE, 0);
+    
+    GtkWidget *list_box = gtk_list_box_new();
+    gtk_container_add(GTK_CONTAINER(scrolled), list_box);
+
+    GKeyFile *config = load_config();
+    gchar *current_exclusions = NULL;
+    if (g_key_file_has_key(config, CONFIG_GROUP, "exclusions", NULL)) {
+        current_exclusions = g_key_file_get_string(config, CONFIG_GROUP, "exclusions", NULL);
+    }
+
+    GHashTable *added_apps = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
+
+    // 1. Force explicitly custom system entries first
+    add_exclusion_row(list_box, "Desktop / System UI (Gnome/KWin/PaperWM)", "gnome-shell,mutter,kwin,plasmashell,paperwm", current_exclusions, NULL);
+    g_hash_table_add(added_apps, g_strdup("gnome-shell"));
+    g_hash_table_add(added_apps, g_strdup("mutter"));
+    g_hash_table_add(added_apps, g_strdup("kwin"));
+    
+    // 2. Read the recently seen apps from the background listener
+    FILE *f_seen = fopen("/tmp/momentum_mouse_seen_apps.txt", "r");
+    if (f_seen) {
+        char line[256];
+        while (fgets(line, sizeof(line), f_seen)) {
+            line[strcspn(line, "\r\n")] = 0;
+            if (strlen(line) > 0 && !g_hash_table_contains(added_apps, line)) {
+                char display[300];
+                snprintf(display, sizeof(display), "%s (Recently Focused)", line);
+                add_exclusion_row(list_box, display, line, current_exclusions, NULL);
+                g_hash_table_add(added_apps, g_strdup(line));
+            }
+        }
+        fclose(f_seen);
+    }
+    
+    // 3. Load from GAppInfo
+    GList *apps = g_app_info_get_all();
+    for (GList *l = apps; l != NULL; l = l->next) {
+        GAppInfo *app = G_APP_INFO(l->data);
+        if (g_app_info_should_show(app)) {
+            const char *id = g_app_info_get_id(app);
+            if (!id) continue;
+            
+            char *clean_id = g_strdup(id);
+            char *dot = strstr(clean_id, ".desktop");
+            if (dot) *dot = '\0';
+            
+            if (!g_hash_table_contains(added_apps, clean_id)) {
+                GIcon *icon = g_app_info_get_icon(app);
+                add_exclusion_row(list_box, g_app_info_get_name(app), clean_id, current_exclusions, icon);
+                g_hash_table_add(added_apps, g_strdup(clean_id));
+            }
+            g_free(clean_id);
+        }
+    }
+    g_list_free_full(apps, g_object_unref);
+    
+    gtk_list_box_set_sort_func(GTK_LIST_BOX(list_box), compare_app_info, NULL, NULL);
+    
+    gtk_widget_show_all(dialog);
+    
+    gint response = gtk_dialog_run(GTK_DIALOG(dialog));
+    if (response == GTK_RESPONSE_ACCEPT) {
+        GString *new_excl = g_string_new("");
+        GList *children = gtk_container_get_children(GTK_CONTAINER(list_box));
+        for (GList *iter = children; iter != NULL; iter = iter->next) {
+            GtkWidget *row = GTK_WIDGET(iter->data);
+            GtkWidget *box = gtk_bin_get_child(GTK_BIN(row));
+            GList *box_children = gtk_container_get_children(GTK_CONTAINER(box));
+            GtkWidget *check = GTK_WIDGET(g_list_nth_data(box_children, g_list_length(box_children) - 1));
+            
+            if (GTK_IS_TOGGLE_BUTTON(check) && gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(check))) {
+                const char *app_id = g_object_get_data(G_OBJECT(check), "app_id");
+                if (app_id) {
+                    char *id_copy = g_strdup(app_id);
+                    char *token = strtok(id_copy, ",");
+                    while(token) {
+                        if (new_excl->len > 0) g_string_append(new_excl, ",");
+                        g_string_append(new_excl, token);
+                        token = strtok(NULL, ",");
+                    }
+                    g_free(id_copy);
+                }
+            }
+            g_list_free(box_children);
+        }
+        g_list_free(children);
+        
+        g_key_file_set_string(config, CONFIG_GROUP, "exclusions", new_excl->str);
+        save_config(config, parent_window);
+        g_string_free(new_excl, TRUE);
+    }
+    
+    g_hash_table_destroy(added_apps);
+    if (current_exclusions) g_free(current_exclusions);
+    g_key_file_free(config);
+    gtk_widget_destroy(dialog);
+}
+
 // Callback for expander toggled
 static void on_expander_notify(GObject *object, GParamSpec *param_spec, gpointer user_data) {
     (void)param_spec; // Unused
@@ -302,6 +639,24 @@ static void on_expander_notify(GObject *object, GParamSpec *param_spec, gpointer
             gtk_box_set_child_packing(GTK_BOX(parent_box), GTK_WIDGET(expander), FALSE, FALSE, 0, GTK_PACK_START);
         }
     }
+}
+
+static void setup_user_xdg_dirs() {
+    const char *orig_data_dirs = g_getenv("XDG_DATA_DIRS");
+    if (!orig_data_dirs) {
+        orig_data_dirs = "/usr/local/share:/usr/share";
+    }
+
+    const char *sudo_user = g_getenv("SUDO_USER");
+    if (!sudo_user) return; // Not running with sudo?
+
+    char new_data_dirs[4096];
+    // Include user flatpak exports directly to capture user-installed flatpaks
+    snprintf(new_data_dirs, sizeof(new_data_dirs), 
+        "/var/lib/flatpak/exports/share:/home/%s/.local/share/flatpak/exports/share:/home/%s/.local/share:%s", 
+        sudo_user, sudo_user, orig_data_dirs);
+
+    g_setenv("XDG_DATA_DIRS", new_data_dirs, TRUE);
 }
 
 // Function to reliably detect GNOME dark mode across sudo/pkexec
@@ -349,6 +704,7 @@ static gboolean detect_system_dark_mode(void) {
 }
 
 int main(int argc, char *argv[]) {
+    setup_user_xdg_dirs();
     gtk_init(&argc, &argv);
 
     // Load configuration
@@ -731,19 +1087,68 @@ int main(int argc, char *argv[]) {
     gtk_grid_attach(GTK_GRID(grid), debug_label, 0, 13, 1, 1);
     gtk_grid_attach(GTK_GRID(grid), debug_switch, 1, 13, 1, 1);
 
-    // Apply button
-    GtkWidget *apply_button = gtk_button_new_with_label("Apply");
-    gtk_widget_set_hexpand(apply_button, TRUE);
-    gtk_widget_set_halign(apply_button, GTK_ALIGN_FILL);
-    gtk_grid_attach(GTK_GRID(grid), apply_button, 0, 14, 2, 1); // Adjusted row index
+    // Manage Exclusions button
+    GtkWidget *exclusions_label = gtk_label_new("App Exclusions:");
+    gtk_widget_set_halign(exclusions_label, GTK_ALIGN_END);
+    GtkWidget *exclusions_button = gtk_button_new_with_label("Manage...");
+    g_signal_connect(exclusions_button, "clicked", G_CALLBACK(on_manage_exclusions_clicked), NULL);
+    gtk_widget_set_halign(exclusions_button, GTK_ALIGN_FILL);
+    gtk_grid_attach(GTK_GRID(grid), exclusions_label, 0, 14, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), exclusions_button, 1, 14, 1, 1);
+
+    // Window Listener Status
+    GtkWidget *listener_label = gtk_label_new("Window Listener:");
+    gtk_widget_set_halign(listener_label, GTK_ALIGN_END);
     
-    // Create an array of widget pointers to pass as data
-    GtkWidget *widgets[] = {
-        sens_scale, mult_scale, fric_scale, vel_scale, natural_switch, grab_switch, device_combo,
-        drag_switch, res_scale, rate_scale, stop_scale,
-        multitouch_switch, horizontal_switch, debug_switch
-    };
+    GtkWidget *listener_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
+    GtkWidget *listener_status = gtk_label_new("");
+    update_listener_status_ui(listener_status);
+    g_timeout_add_seconds(2, on_status_timer, listener_status);
+    
+    GtkWidget *listener_restart = gtk_button_new_with_label("Restart");
+    g_signal_connect(listener_restart, "clicked", G_CALLBACK(on_restart_listener_clicked), listener_status);
+    
+    gtk_box_pack_start(GTK_BOX(listener_box), listener_status, FALSE, FALSE, 0);
+    gtk_box_pack_end(GTK_BOX(listener_box), listener_restart, FALSE, FALSE, 0);
+    
+    gtk_grid_attach(GTK_GRID(grid), listener_label, 0, 15, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), listener_box, 1, 15, 1, 1);
+
+    // Action Buttons Box
+    GtkWidget *action_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
+    
+    // Create static robust array of widget pointers to pass as data
+    static GtkWidget *widgets[14];
+    widgets[0] = sens_scale;
+    widgets[1] = mult_scale;
+    widgets[2] = fric_scale;
+    widgets[3] = vel_scale;
+    widgets[4] = natural_switch;
+    widgets[5] = grab_switch;
+    widgets[6] = device_combo;
+    widgets[7] = drag_switch;
+    widgets[8] = res_scale;
+    widgets[9] = rate_scale;
+    widgets[10] = stop_scale;
+    widgets[11] = multitouch_switch;
+    widgets[12] = horizontal_switch;
+    widgets[13] = debug_switch;
+    
+    GtkWidget *stop_button = gtk_button_new_with_label("Stop Services");
+    g_signal_connect(stop_button, "clicked", G_CALLBACK(on_stop_services_clicked), NULL);
+    gtk_box_pack_start(GTK_BOX(action_box), stop_button, TRUE, TRUE, 0);
+
+    GtkWidget *cancel_button = gtk_button_new_with_label("Revert / Cancel");
+    g_signal_connect(cancel_button, "clicked", G_CALLBACK(on_cancel_clicked), widgets);
+    gtk_box_pack_start(GTK_BOX(action_box), cancel_button, TRUE, TRUE, 0);
+
+    GtkWidget *apply_button = gtk_button_new_with_label("Apply Change & Save");
     g_signal_connect(apply_button, "clicked", G_CALLBACK(on_apply_clicked), widgets);
+    GtkStyleContext *context = gtk_widget_get_style_context(apply_button);
+    gtk_style_context_add_class(context, "suggested-action");
+    gtk_box_pack_start(GTK_BOX(action_box), apply_button, TRUE, TRUE, 0);
+
+    gtk_grid_attach(GTK_GRID(grid), action_box, 0, 16, 2, 1);
 
     // Add Expander for log viewer
     GtkWidget *expander = gtk_expander_new("Realtime Logs");

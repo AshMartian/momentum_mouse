@@ -214,24 +214,32 @@ void* input_thread_func(void* arg) {
 
         if (rc == LIBEVDEV_READ_STATUS_SUCCESS) {
              // --- Event Handling Logic (adapted from capture_input_event) ---
+             
+             bool excluded = is_current_app_excluded();
 
              // Scroll Wheel Event
              if (ev.type == EV_REL &&
                  ((scroll_axis == SCROLL_AXIS_VERTICAL && ev.code == REL_WHEEL) ||
                   (scroll_axis == SCROLL_AXIS_HORIZONTAL && ev.code == REL_HWHEEL))) {
-                 if (debug_mode) {
-                     printf("InputThread: Captured %s scroll event: %d\n",
-                            (scroll_axis == SCROLL_AXIS_HORIZONTAL) ? "horizontal" : "vertical",
-                            ev.value);
-                 }
-                 enqueue_scroll_delta(ev.value); // Enqueue delta
+                 
+                 if (excluded) {
+                     // Pass through natively. We ignore momentum logic entirely
+                     emit_passthrough_event(&ev);
+                 } else {
+                     if (debug_mode) {
+                         debug_log("InputThread: Captured %s scroll event: %d\n",
+                                (scroll_axis == SCROLL_AXIS_HORIZONTAL) ? "horizontal" : "vertical",
+                                ev.value);
+                     }
+                     enqueue_scroll_delta(ev.value); // Enqueue delta
 
-                 // If grab_device is enabled, don't pass through the scroll event
-                 if (!grab_device) {
-                     // Pass through a zeroed event if not grabbing to avoid double-scroll
-                     struct input_event dummy_ev = ev;
-                     dummy_ev.value = 0;
-                     emit_passthrough_event(&dummy_ev);
+                     // If grab_device is enabled, don't pass through the scroll event
+                     if (!grab_device) {
+                         // Pass through a zeroed event if not grabbing to avoid double-scroll
+                         struct input_event dummy_ev = ev;
+                         dummy_ev.value = 0;
+                         emit_passthrough_event(&dummy_ev);
+                     }
                  }
                  // No return needed, loop continues
              }

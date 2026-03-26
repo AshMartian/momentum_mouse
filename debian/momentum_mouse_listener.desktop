@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Momentum Mouse Window Listener
+Comment=Tracks application focus for Momentum Mouse features
+Exec=momentum_mouse_window_listener
+Terminal=false
+NoDisplay=true
+X-GNOME-Autostart-Phase=Initialization

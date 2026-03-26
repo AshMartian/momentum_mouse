@@ -58,6 +58,15 @@ extern int refresh_rate; // Refresh rate in Hz for inertia updates
 extern char *device_override;      // Device path override
 extern int mouse_move_drag;        // Whether mouse movement should slow down scrolling
 
+// App exclusions variables
+extern char **app_exclusions;
+extern int num_app_exclusions;
+extern char current_active_app[256];
+extern pthread_mutex_t active_app_mutex;
+
+// Helper to check if current app is excluded
+int is_current_app_excluded(void);
+
 // Global flag for signal handling and thread control
 // Defined and initialized at file scope in momentum_mouse.c
 extern volatile sig_atomic_t running;

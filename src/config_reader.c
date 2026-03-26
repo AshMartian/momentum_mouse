@@ -247,6 +247,30 @@ void load_config_file(const char *filename) {
                         printf("Config: device_name=%s (not found)\n", value);
                     }
                 }
+            } else if (strcmp(k, "exclusions") == 0) {
+                // Parse comma-separated list of exclusions
+                if (strlen(value) > 0 && app_exclusions == NULL) {
+                    char *val_copy = strdup(value);
+                    char *token = strtok(val_copy, ",;");
+                    while (token != NULL) {
+                        app_exclusions = realloc(app_exclusions, sizeof(char*) * (num_app_exclusions + 1));
+                        
+                        // Trim leading/trailing whitespace
+                        char *trimmed = token;
+                        while (*trimmed == ' ' || *trimmed == '\t') trimmed++;
+                        char *end = trimmed + strlen(trimmed) - 1;
+                        while (end > trimmed && (*end == ' ' || *end == '\t')) *end-- = '\0';
+                        
+                        app_exclusions[num_app_exclusions] = strdup(trimmed);
+                        num_app_exclusions++;
+                        token = strtok(NULL, ",;");
+                    }
+                    free(val_copy);
+                    
+                    if (debug_mode) {
+                        printf("Config: Loaded %d app exclusions\n", num_app_exclusions);
+                    }
+                }
             }
         }
     }

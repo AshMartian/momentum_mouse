@@ -6,8 +6,116 @@
 #include <syslog.h>
 #include <pwd.h>
 #include <stdarg.h>
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <sys/stat.h>
+#include <errno.h>
 #include "momentum_mouse.h"
 #include <linux/limits.h>
+
+// App exclusions variables
+char **app_exclusions = NULL;
+int num_app_exclusions = 0;
+char current_active_app[256] = {0};
+pthread_mutex_t active_app_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_t socket_thread_id;
+int socket_fd = -1;
+
+int is_current_app_excluded(void) {
+    if (num_app_exclusions == 0) return 0;
+    
+    pthread_mutex_lock(&active_app_mutex);
+    if (current_active_app[0] == '\0') {
+        pthread_mutex_unlock(&active_app_mutex);
+        return 0;
+    }
+    
+    int excluded = 0;
+    for (int i = 0; i < num_app_exclusions; i++) {
+        if (strstr(current_active_app, app_exclusions[i]) != NULL) {
+            excluded = 1;
+            break;
+        }
+    }
+    pthread_mutex_unlock(&active_app_mutex);
+    return excluded;
+}
+
+#define SOCKET_PATH "/run/momentum_mouse.sock"
+void* socket_thread_func(void* arg) {
+    (void)arg;
+    struct sockaddr_un addr;
+    
+    socket_fd = socket(AF_UNIX, SOCK_DGRAM, 0);
+    if (socket_fd == -1) {
+        perror("unix socket error");
+        return NULL;
+    }
+    
+    unlink(SOCKET_PATH);
+    memset(&addr, 0, sizeof(addr));
+    addr.sun_family = AF_UNIX;
+    strncpy(addr.sun_path, SOCKET_PATH, sizeof(addr.sun_path) - 1);
+    
+    if (bind(socket_fd, (struct sockaddr*)&addr, sizeof(addr)) == -1) {
+        perror("unix socket bind error");
+        close(socket_fd);
+        return NULL;
+    }
+    
+    // Give everybody read/write access to the socket
+    chmod(SOCKET_PATH, 0666);
+    
+    char buffer[256];
+    while (running) {
+        struct timeval tv;
+        tv.tv_sec = 1; // 1 second timeout
+        tv.tv_usec = 0;
+        
+        fd_set rfds;
+        FD_ZERO(&rfds);
+        FD_SET(socket_fd, &rfds);
+        
+        int retval = select(socket_fd + 1, &rfds, NULL, NULL, &tv);
+        if (retval == -1) {
+            if (errno == EINTR) continue;
+            perror("unix socket select error");
+            break;
+        } else if (retval > 0) {
+            int bytes_received = recvfrom(socket_fd, buffer, sizeof(buffer) - 1, 0, NULL, NULL);
+            if (bytes_received > 0) {
+                buffer[bytes_received] = '\0';
+                // Clean up trailing newline
+                if (buffer[bytes_received - 1] == '\n') buffer[bytes_received - 1] = '\0';
+                
+                pthread_mutex_lock(&active_app_mutex);
+                strncpy(current_active_app, buffer, sizeof(current_active_app) - 1);
+                current_active_app[sizeof(current_active_app) - 1] = '\0';
+                pthread_mutex_unlock(&active_app_mutex);
+                
+                if (debug_mode) {
+                    debug_log("Socket received active app: %s\n", current_active_app);
+                }
+                
+                // If it transitioned to an excluded app, immediately halt inertia
+                if (is_current_app_excluded()) {
+                    pthread_mutex_lock(&state_mutex);
+                    stop_inertia();
+                    stop_requested = true;
+                    pthread_cond_signal(&state_cond);
+                    pthread_mutex_unlock(&state_mutex);
+                    if (debug_mode) {
+                        debug_log("Inertia halted due to excluded app focus.\n");
+                    }
+                }
+            }
+        }
+    }
+    
+    close(socket_fd);
+    unlink(SOCKET_PATH);
+    return NULL;
+}
 
 // Global configuration variables
 int use_multitouch = 1;
@@ -384,11 +492,25 @@ int main(int argc, char *argv[]) {
         pthread_cond_destroy(&state_cond);
         return 1;
     }
+    
+    // Start the unix socket thread
+    if (pthread_create(&socket_thread_id, NULL, socket_thread_func, NULL) != 0) {
+        perror("Warning: Error creating socket thread");
+        // We can continue running without the socket thread if necessary
+    }
+    
     debug_log("Threads started successfully.\n");
     // --- End Thread Creation ---
 
     // --- Wait for Threads to Complete ---
     debug_log("Main thread waiting for worker threads to finish...\n");
+
+    // Join socket thread
+    if (pthread_join(socket_thread_id, NULL) != 0) {
+         perror("Error joining socket thread");
+    } else {
+         debug_log("Socket thread joined.\n");
+    }
 
     // Join inertia thread first
     if (pthread_join(inertia_thread_id, NULL) != 0) {
