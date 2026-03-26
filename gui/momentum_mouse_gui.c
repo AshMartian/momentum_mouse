@@ -18,6 +18,39 @@ void debug_log(const char *format, ...) {
     (void)format; // Suppress unused parameter warning
 }
 
+static gboolean read_log_output(GIOChannel *source, GIOCondition condition, gpointer data) {
+    GtkTextBuffer *buffer = GTK_TEXT_BUFFER(data);
+    gchar *str = NULL;
+    gsize length = 0;
+    GError *error = NULL;
+
+    if (condition & G_IO_IN) {
+        GIOStatus status;
+        do {
+            status = g_io_channel_read_line(source, &str, &length, NULL, &error);
+            if (status == G_IO_STATUS_NORMAL && str != NULL) {
+                GtkTextIter iter;
+                gtk_text_buffer_get_end_iter(buffer, &iter);
+                gtk_text_buffer_insert(buffer, &iter, str, -1);
+                
+                GtkWidget *text_view = g_object_get_data(G_OBJECT(buffer), "text_view");
+                if (text_view) {
+                    gtk_text_buffer_get_end_iter(buffer, &iter);
+                    GtkTextMark *mark = gtk_text_buffer_create_mark(buffer, NULL, &iter, FALSE);
+                    gtk_text_view_scroll_mark_onscreen(GTK_TEXT_VIEW(text_view), mark);
+                    gtk_text_buffer_delete_mark(buffer, mark);
+                }
+                g_free(str);
+            }
+        } while (status == G_IO_STATUS_NORMAL);
+    }
+
+    if (condition & (G_IO_ERR | G_IO_HUP)) {
+        return FALSE; // Remove source
+    }
+    return TRUE; // Keep source
+}
+
 #define CONFIG_GROUP "smooth_scroll"
 
 // Default values
@@ -111,6 +144,9 @@ static void on_apply_clicked(GtkWidget *widget, gpointer data) {
     gdouble resolution_mult = gtk_range_get_value(GTK_RANGE(widgets[8]));
     gint refresh_rate_val = (gint)gtk_range_get_value(GTK_RANGE(widgets[9]));
     gdouble stop_threshold = gtk_range_get_value(GTK_RANGE(widgets[10]));
+    gboolean multitouch = gtk_switch_get_active(GTK_SWITCH(widgets[11]));
+    gboolean horizontal = gtk_switch_get_active(GTK_SWITCH(widgets[12]));
+    gboolean debug_mode = gtk_switch_get_active(GTK_SWITCH(widgets[13]));
 
     // Get the selected device
     gchar *selected_device = gtk_combo_box_text_get_active_text(GTK_COMBO_BOX_TEXT(device_combo));
@@ -127,6 +163,9 @@ static void on_apply_clicked(GtkWidget *widget, gpointer data) {
     g_key_file_set_double(config, CONFIG_GROUP, "resolution_multiplier", resolution_mult);
     g_key_file_set_integer(config, CONFIG_GROUP, "refresh_rate", refresh_rate_val);
     g_key_file_set_double(config, CONFIG_GROUP, "inertia_stop_threshold", stop_threshold);
+    g_key_file_set_boolean(config, CONFIG_GROUP, "multitouch", multitouch);
+    g_key_file_set_boolean(config, CONFIG_GROUP, "horizontal", horizontal);
+    g_key_file_set_boolean(config, CONFIG_GROUP, "debug", debug_mode);
     
     // Handle device selection
     if (selected_device && strcmp(selected_device, "Auto-detect (recommended)") != 0 && 
@@ -241,6 +280,74 @@ static void save_config(GKeyFile *key_file, GtkWidget *parent) {
     }
 }
 
+// Callback for expander toggled
+static void on_expander_notify(GObject *object, GParamSpec *param_spec, gpointer user_data) {
+    (void)param_spec; // Unused
+    GtkExpander *expander = GTK_EXPANDER(object);
+    GtkWidget *scrolled_window = GTK_WIDGET(user_data);
+    gboolean expanded = gtk_expander_get_expanded(expander);
+    
+    GtkWidget *parent_box = gtk_widget_get_parent(GTK_WIDGET(expander));
+    
+    if (expanded) {
+        gtk_widget_set_vexpand(GTK_WIDGET(expander), TRUE);
+        gtk_widget_set_vexpand(scrolled_window, TRUE);
+        if (parent_box && GTK_IS_BOX(parent_box)) {
+            gtk_box_set_child_packing(GTK_BOX(parent_box), GTK_WIDGET(expander), TRUE, TRUE, 0, GTK_PACK_START);
+        }
+    } else {
+        gtk_widget_set_vexpand(GTK_WIDGET(expander), FALSE);
+        gtk_widget_set_vexpand(scrolled_window, FALSE);
+        if (parent_box && GTK_IS_BOX(parent_box)) {
+            gtk_box_set_child_packing(GTK_BOX(parent_box), GTK_WIDGET(expander), FALSE, FALSE, 0, GTK_PACK_START);
+        }
+    }
+}
+
+// Function to reliably detect GNOME dark mode across sudo/pkexec
+static gboolean detect_system_dark_mode(void) {
+    const gchar *dark_mode_env = g_getenv("MOMENTUM_DARK_MODE");
+    if (dark_mode_env && strcmp(dark_mode_env, "1") == 0) {
+        return TRUE;
+    }
+
+    gchar *out = NULL;
+    gchar *cmd1 = NULL;
+    gchar *cmd2 = NULL;
+    const gchar *sudo_user = g_getenv("SUDO_USER");
+    const gchar *pkexec_uid = g_getenv("PKEXEC_UID");
+    
+    if (sudo_user) {
+        cmd1 = g_strdup_printf("su - %s -c 'gsettings get org.gnome.desktop.interface color-scheme 2>/dev/null'", sudo_user);
+        cmd2 = g_strdup_printf("su - %s -c 'gsettings get org.gnome.desktop.interface gtk-theme 2>/dev/null'", sudo_user);
+    } else if (pkexec_uid) {
+        cmd1 = g_strdup_printf("su - $(id -nu %s) -c 'gsettings get org.gnome.desktop.interface color-scheme 2>/dev/null'", pkexec_uid);
+        cmd2 = g_strdup_printf("su - $(id -nu %s) -c 'gsettings get org.gnome.desktop.interface gtk-theme 2>/dev/null'", pkexec_uid);
+    } else {
+        cmd1 = g_strdup("gsettings get org.gnome.desktop.interface color-scheme 2>/dev/null");
+        cmd2 = g_strdup("gsettings get org.gnome.desktop.interface gtk-theme 2>/dev/null");
+    }
+
+    gboolean is_dark = FALSE;
+    if (cmd1 && g_spawn_command_line_sync(cmd1, &out, NULL, NULL, NULL)) {
+        if (out && strstr(out, "prefer-dark")) {
+            is_dark = TRUE;
+        }
+        g_free(out);
+    }
+    
+    if (!is_dark && cmd2 && g_spawn_command_line_sync(cmd2, &out, NULL, NULL, NULL)) {
+        if (out && strstr(out, "-dark")) {
+            is_dark = TRUE;
+        }
+        g_free(out);
+    }
+
+    g_free(cmd1);
+    g_free(cmd2);
+    return is_dark;
+}
+
 int main(int argc, char *argv[]) {
     gtk_init(&argc, &argv);
 
@@ -260,11 +367,17 @@ int main(int argc, char *argv[]) {
     // Create main window.
     GtkWidget *window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
     gtk_window_set_title(GTK_WINDOW(window), "Momentum Mouse");
-    gtk_window_set_default_size(GTK_WINDOW(window), 400, 350);
+    gtk_window_set_default_size(GTK_WINDOW(window), 450, 600);
     g_signal_connect(window, "destroy", G_CALLBACK(gtk_main_quit), NULL);
 
     // Create a box for the main layout (vertical)
     GtkWidget *main_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
+    
+    // Get env var for dark mode (useful when launching via pkexec)
+    if (detect_system_dark_mode()) {
+        g_object_set(gtk_settings_get_default(), "gtk-application-prefer-dark-theme", TRUE, NULL);
+    }
+    
     gtk_container_set_border_width(GTK_CONTAINER(main_box), 10);
     gtk_container_add(GTK_CONTAINER(window), main_box);
     
@@ -273,8 +386,12 @@ int main(int argc, char *argv[]) {
     
     // Try to load the icon from standard locations
     const gchar *icon_paths[] = {
+        "/usr/local/share/icons/hicolor/256x256/apps/momentum_mouse.png",
+        "/usr/local/share/pixmaps/momentum_mouse.png",
+        "/usr/share/icons/hicolor/256x256/apps/momentum_mouse.png",
         "/usr/share/icons/hicolor/128x128/apps/momentum_mouse.png",
         "/usr/share/pixmaps/momentum_mouse.png",
+        "debian/icons/momentum_mouse.png",
         "../debian/icons/momentum_mouse.png"  // For development environment
     };
     
@@ -314,10 +431,16 @@ int main(int argc, char *argv[]) {
     gtk_box_pack_start(GTK_BOX(main_box), title_label, FALSE, FALSE, 5);
     
     // Create a grid for the settings
+    GtkWidget *options_scrolled = gtk_scrolled_window_new(NULL, NULL);
+    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(options_scrolled), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
+    gtk_widget_set_size_request(options_scrolled, -1, 200); // Allow it to shrink down if needed
+    gtk_widget_set_vexpand(options_scrolled, TRUE);
+
     GtkWidget *grid = gtk_grid_new();
     gtk_grid_set_row_spacing(GTK_GRID(grid), 10);
     gtk_grid_set_column_spacing(GTK_GRID(grid), 10);
-    gtk_box_pack_start(GTK_BOX(main_box), grid, TRUE, TRUE, 0);
+    gtk_container_add(GTK_CONTAINER(options_scrolled), grid);
+    gtk_box_pack_start(GTK_BOX(main_box), options_scrolled, TRUE, TRUE, 0);
     
     // Create a combo box for device selection
     GtkWidget *device_label = gtk_label_new("Input Device:");
@@ -569,18 +692,91 @@ int main(int argc, char *argv[]) {
     gtk_grid_attach(GTK_GRID(grid), stop_label, 0, 10, 1, 1);
     gtk_grid_attach(GTK_GRID(grid), stop_scale, 1, 10, 1, 1);
 
+    // Multitouch switch
+    GtkWidget *multitouch_label = gtk_label_new("Emulate Multitouch:");
+    gtk_widget_set_halign(multitouch_label, GTK_ALIGN_END);
+    GtkWidget *multitouch_switch = gtk_switch_new();
+    gboolean use_multitouch = TRUE;
+    if (g_key_file_has_key(config, CONFIG_GROUP, "multitouch", NULL)) {
+        use_multitouch = g_key_file_get_boolean(config, CONFIG_GROUP, "multitouch", NULL);
+    }
+    gtk_switch_set_active(GTK_SWITCH(multitouch_switch), use_multitouch);
+    gtk_widget_set_halign(multitouch_switch, GTK_ALIGN_END);
+    gtk_grid_attach(GTK_GRID(grid), multitouch_label, 0, 11, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), multitouch_switch, 1, 11, 1, 1);
+
+    // Horizontal switch
+    GtkWidget *horizontal_label = gtk_label_new("Horizontal Scrolling:");
+    gtk_widget_set_halign(horizontal_label, GTK_ALIGN_END);
+    GtkWidget *horizontal_switch = gtk_switch_new();
+    gboolean use_horizontal = FALSE;
+    if (g_key_file_has_key(config, CONFIG_GROUP, "horizontal", NULL)) {
+        use_horizontal = g_key_file_get_boolean(config, CONFIG_GROUP, "horizontal", NULL);
+    }
+    gtk_switch_set_active(GTK_SWITCH(horizontal_switch), use_horizontal);
+    gtk_widget_set_halign(horizontal_switch, GTK_ALIGN_END);
+    gtk_grid_attach(GTK_GRID(grid), horizontal_label, 0, 12, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), horizontal_switch, 1, 12, 1, 1);
+
+    // Debug switch
+    GtkWidget *debug_label = gtk_label_new("Debug Logging:");
+    gtk_widget_set_halign(debug_label, GTK_ALIGN_END);
+    GtkWidget *debug_switch = gtk_switch_new();
+    gboolean use_debug = FALSE;
+    if (g_key_file_has_key(config, CONFIG_GROUP, "debug", NULL)) {
+        use_debug = g_key_file_get_boolean(config, CONFIG_GROUP, "debug", NULL);
+    }
+    gtk_switch_set_active(GTK_SWITCH(debug_switch), use_debug);
+    gtk_widget_set_halign(debug_switch, GTK_ALIGN_END);
+    gtk_grid_attach(GTK_GRID(grid), debug_label, 0, 13, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), debug_switch, 1, 13, 1, 1);
+
     // Apply button
     GtkWidget *apply_button = gtk_button_new_with_label("Apply");
     gtk_widget_set_hexpand(apply_button, TRUE);
     gtk_widget_set_halign(apply_button, GTK_ALIGN_FILL);
-    gtk_grid_attach(GTK_GRID(grid), apply_button, 0, 11, 2, 1); // Adjusted row index
+    gtk_grid_attach(GTK_GRID(grid), apply_button, 0, 14, 2, 1); // Adjusted row index
     
     // Create an array of widget pointers to pass as data
     GtkWidget *widgets[] = {
         sens_scale, mult_scale, fric_scale, vel_scale, natural_switch, grab_switch, device_combo,
-        drag_switch, res_scale, rate_scale, stop_scale // Added stop_scale
+        drag_switch, res_scale, rate_scale, stop_scale,
+        multitouch_switch, horizontal_switch, debug_switch
     };
     g_signal_connect(apply_button, "clicked", G_CALLBACK(on_apply_clicked), widgets);
+
+    // Add Expander for log viewer
+    GtkWidget *expander = gtk_expander_new("Realtime Logs");
+    // Pack it with expand=FALSE initially, its vexpand property will handle dynamic expanding
+    gtk_box_pack_start(GTK_BOX(main_box), expander, FALSE, FALSE, 0);
+
+    // Scrolled window inside expander
+    GtkWidget *scrolled_window = gtk_scrolled_window_new(NULL, NULL);
+    gtk_widget_set_size_request(scrolled_window, -1, 150); // smaller minimum so it fits on small screens
+    gtk_container_add(GTK_CONTAINER(expander), scrolled_window);
+
+    // Connect the expander signal to dynamically allocate vertical space when opened
+    g_signal_connect(expander, "notify::expanded", G_CALLBACK(on_expander_notify), scrolled_window);
+
+    // Text view inside scrolled window
+    GtkWidget *text_view = gtk_text_view_new();
+    gtk_text_view_set_editable(GTK_TEXT_VIEW(text_view), FALSE);
+    gtk_text_view_set_cursor_visible(GTK_TEXT_VIEW(text_view), FALSE);
+    gtk_text_view_set_monospace(GTK_TEXT_VIEW(text_view), TRUE);
+    gtk_text_view_set_wrap_mode(GTK_TEXT_VIEW(text_view), GTK_WRAP_WORD_CHAR);
+    gtk_container_add(GTK_CONTAINER(scrolled_window), text_view);
+
+    GtkTextBuffer *buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(text_view));
+    g_object_set_data(G_OBJECT(buffer), "text_view", text_view);
+
+    gint out_fd;
+    gchar *journal_argv[] = {"journalctl", "-u", "momentum_mouse.service", "-f", "-n", "20", NULL};
+    GError *error = NULL;
+    if (g_spawn_async_with_pipes(NULL, journal_argv, NULL, G_SPAWN_SEARCH_PATH, NULL, NULL, NULL, NULL, &out_fd, NULL, &error)) {
+        GIOChannel *channel = g_io_channel_unix_new(out_fd);
+        g_io_channel_set_flags(channel, G_IO_FLAG_NONBLOCK, NULL);
+        g_io_add_watch(channel, G_IO_IN | G_IO_HUP | G_IO_ERR, read_log_output, buffer);
+    }
 
     gtk_widget_show_all(window);
     gtk_main();

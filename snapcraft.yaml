@@ -6,7 +6,7 @@ description: |
   Provides smooth scrolling with momentum and natural deceleration
   for a more intuitive scrolling experience. (Kinetic, physics-based)
 
-version: "0.5.0"
+version: "1.1.0"
 grade: stable
 confinement: devmode
 

@@ -1,3 +1,12 @@
+momentum-mouse (1.1.0) stable; urgency=medium
+
+  * Build + install process for rpm, RHEL / Fedora / Red Hat compatible
+  * Log viewer within GUI
+  * Ability to exclude specific applications
+  * Better documentation
+
+ -- Ash Martian <dev@ashmartian.com> Wed, 25 Mar 2026 20:38 +0000
+
 momentum-mouse (1.0.0) stable; urgency=medium
 
   * Multi-threaded seperation of input and trackpad events

@@ -28,12 +28,17 @@ $(TARGET): $(SRCS) $(PARENT_OBJS)
 ifeq ($(HAS_GTK), 1)
 	$(CC) $(CFLAGS) -o $(TARGET) $(SRCS) $(PARENT_OBJS) $(LIBS)
 	@echo "#!/bin/bash" > run_gui.sh
+	@echo "IS_DARK=0" >> run_gui.sh
+	@echo "if command -v gsettings &> /dev/null; then" >> run_gui.sh
+	@echo "    SCHEME=\$$(gsettings get org.gnome.desktop.interface color-scheme 2>/dev/null)" >> run_gui.sh
+	@echo "    if [[ \"\$$SCHEME\" == *\"prefer-dark\"* ]]; then IS_DARK=1; fi" >> run_gui.sh
+	@echo "fi" >> run_gui.sh
 	@echo "if [ \"\$$(id -u)\" -eq 0 ]; then" >> run_gui.sh
 	@echo "    # Already root, just run the GUI" >> run_gui.sh
-	@echo "    ./$(TARGET)" >> run_gui.sh
+	@echo "    MOMENTUM_DARK_MODE=\$$IS_DARK ./$(TARGET)" >> run_gui.sh
 	@echo "else" >> run_gui.sh
 	@echo "    # Not root, use pkexec to get elevated privileges" >> run_gui.sh
-	@echo "    pkexec env DISPLAY=\$$DISPLAY XAUTHORITY=\$$XAUTHORITY \$$(dirname \"\$$0\")/$(TARGET)" >> run_gui.sh
+	@echo "    pkexec env DISPLAY=\$$DISPLAY XAUTHORITY=\$$XAUTHORITY MOMENTUM_DARK_MODE=\$$IS_DARK \$$(dirname \"\$$0\")/$(TARGET)" >> run_gui.sh
 	@echo "fi" >> run_gui.sh
 	@chmod +x run_gui.sh
 	@echo "Created run_gui.sh wrapper script"
