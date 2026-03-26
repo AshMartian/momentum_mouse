@@ -64,7 +64,7 @@ $(TARGET): $(OBJS)
 	$(CC) -o $@ $^ $(LDFLAGS)
 
 $(LISTENER_TARGET): src/window_listener.c
-	$(CC) $(CFLAGS) -o $@ src/window_listener.c $$(pkg-config --cflags --libs atspi-2)
+	$(CC) $(CFLAGS) -o $@ src/window_listener.c $$(pkg-config --cflags --libs atspi-2 gobject-2.0 glib-2.0)
 
 %.o: %.c
 	$(CC) $(CFLAGS) -Iinclude -c $< -o $@
