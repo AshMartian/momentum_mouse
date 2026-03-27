@@ -70,11 +70,13 @@ $(LISTENER_TARGET): src/window_listener.c
 	$(CC) $(CFLAGS) -Iinclude -c $< -o $@
 
 clean:
-	rm -f $(OBJS) $(TARGET) $(LISTENER_TARGET)
+	rm -f $(OBJS) $(TARGET) $(LISTENER_TARGET) test_inertia
 	$(MAKE) -C gui clean
 
 test_inertia: src/test_inertia.c src/inertia_logic.o
 	$(CC) $(CFLAGS) -Iinclude -o test_inertia src/test_inertia.c src/inertia_logic.o -lm -lpthread
+
+test: tests
 
 tests: test_inertia
 	./test_inertia
